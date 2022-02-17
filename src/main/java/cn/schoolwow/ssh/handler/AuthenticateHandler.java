@@ -189,7 +189,7 @@ public class AuthenticateHandler implements Handler{
 
     /**密码登录*/
     public void loginByPassword(SSHSession sshSession) throws IOException {
-        logger.info("[SSH密码方式登录]用户名:{},密码:{}",sshSession.quickSSHConfig.username,sshSession.quickSSHConfig.password);
+        logger.info("[SSH密码方式登录]主机地址:{}, 端口:{}, 用户名:{}, 密码:{}", sshSession.quickSSHConfig.host, sshSession.quickSSHConfig.port, sshSession.quickSSHConfig.username, sshSession.quickSSHConfig.password);
         SSHOutputStream sos = new SSHOutputStreamImpl();
         sos.writeByte(SSHMessageCode.SSH_MSG_USERAUTH_REQUEST.value);
         sos.writeSSHString(new SSHString(sshSession.quickSSHConfig.username));

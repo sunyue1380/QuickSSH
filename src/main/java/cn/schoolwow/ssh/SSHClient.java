@@ -5,14 +5,15 @@ import cn.schoolwow.ssh.domain.stream.SSHString;
 import cn.schoolwow.ssh.handler.Handler;
 import cn.schoolwow.ssh.handler.KexExchangeHandler;
 import cn.schoolwow.ssh.layer.SSHSession;
+import cn.schoolwow.ssh.layer.channel.ExecChannel;
+import cn.schoolwow.ssh.layer.channel.LocalForwardChannel;
+import cn.schoolwow.ssh.layer.channel.RemoteForwardChannel;
 import cn.schoolwow.ssh.layer.channel.SFTPChannel;
-import cn.schoolwow.ssh.layer.channel.SessionChannel;
 import cn.schoolwow.ssh.stream.SSHOutputStream;
 import cn.schoolwow.ssh.stream.SSHOutputStreamImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.*;
 import java.io.IOException;
 
 public class SSHClient {
@@ -34,14 +35,28 @@ public class SSHClient {
         }
     }
 
+    public SSHSession sshSession(){
+        return this.sshSession;
+    }
+
     /**获取session频道*/
     public String exec(String command) throws IOException {
-        return new SessionChannel(sshSession).exec(command);
+        return new ExecChannel(sshSession).exec(command);
     }
 
     /**获取sftp频道*/
     public SFTPChannel sftp() throws IOException {
         return new SFTPChannel(sshSession);
+    }
+
+    /**本地端口转发*/
+    public LocalForwardChannel localForwardChannel() throws IOException {
+        return new LocalForwardChannel(sshSession);
+    }
+
+    /**远程端口转发*/
+    public RemoteForwardChannel remoteForwardChannel() throws IOException {
+        return new RemoteForwardChannel(sshSession);
     }
 
     /**断开连接*/

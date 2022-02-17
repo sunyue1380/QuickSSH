@@ -15,7 +15,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SFTPChannel extends AbstracatChannel {
+public class SFTPChannel extends AbstractChannel {
     private Logger logger = LoggerFactory.getLogger(SFTPChannel.class);
 
     private volatile int fxpId = 0;
@@ -30,7 +30,7 @@ public class SFTPChannel extends AbstracatChannel {
         sos.writeBoolean(true);
         sos.writeSSHString(new SSHString("sftp"));
         sshSession.writeSSHProtocolPayload(sos.toByteArray());
-        checkWantReply();
+        checkChannelRequestWantReply();
 
         //获取SFTP协议版本号
         sos.reset();
@@ -442,16 +442,5 @@ public class SFTPChannel extends AbstracatChannel {
         sos.write(data);
         writeChannelData(sos.toByteArray());
         logger.trace("[发送FXP消息]id:{}, 类型:{}",this.fxpId, fxpCode);
-    }
-
-    private void openSessionChannel() throws IOException {
-        sos.reset();
-        sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_OPEN.value);
-        sos.writeSSHString(new SSHString("session"));
-        sos.writeInt(senderChannel);
-        sos.writeInt(0x100000);
-        sos.writeInt(0x4000);
-        sshSession.writeSSHProtocolPayload(sos.toByteArray());
-        checkChannelOpen();
     }
 }

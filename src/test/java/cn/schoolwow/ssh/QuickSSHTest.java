@@ -2,17 +2,24 @@ package cn.schoolwow.ssh;
 
 import cn.schoolwow.ssh.domain.sftp.SFTPFile;
 import cn.schoolwow.ssh.domain.sftp.SFTPFileAttribute;
+import cn.schoolwow.ssh.layer.channel.LocalForwardChannel;
+import cn.schoolwow.ssh.layer.channel.RemoteForwardChannel;
 import cn.schoolwow.ssh.layer.channel.SFTPChannel;
-import cn.schoolwow.ssh.layer.channel.SessionChannel;
 import org.aeonbits.owner.ConfigCache;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Scanner;
 
 public class QuickSSHTest {
+    private static Logger logger = LoggerFactory.getLogger(QuickSSHTest.class);
     private static Account account = ConfigCache.getOrCreate(Account.class);
 
     @Test
@@ -36,7 +43,7 @@ public class QuickSSHTest {
     }
 
     @Test
-    public void sessionChannelTest() throws IOException {
+    public void exec() throws IOException {
         SSHClient sshClient = QuickSSH.newInstance()
                 .host(account.host())
                 .port(account.port())
@@ -95,6 +102,58 @@ public class QuickSSHTest {
         Assert.assertEquals(directory+"/cc", symbolicPath);
 
         sftpChannel.closeChannel();
+        sshClient.exec("rm -R " + directory);
         sshClient.disconnect();
+    }
+
+    @Test
+    public void localForwardChannel() throws IOException {
+        SSHClient sshClient = QuickSSH.newInstance()
+                .host(account.host())
+                .port(account.port())
+                .username(account.username())
+                .password(account.password())
+                .build();
+        LocalForwardChannel localForwardChannel = sshClient.localForwardChannel();
+        localForwardChannel.localForward(9999,"0.0.0.0",80);
+        Socket socket = new Socket();
+        socket.connect(new InetSocketAddress("127.0.0.1",9999));
+        String request = "GET / HTTP/1.1\r\n" +
+                "Host: 127.0.0.1:9999\r\n" +
+                "Connection: Close\r\n" +
+                "Cache-Control: max-age=0\r\n" +
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36\r\n" +
+                "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\n\r\n";
+        socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
+        socket.getOutputStream().flush();
+        socket.shutdownOutput();
+        logger.info("[发送请求数据}\n{}",request);
+        Scanner scanner = new Scanner(socket.getInputStream());
+        StringBuilder builder = new StringBuilder();
+        while(scanner.hasNextLine()){
+            builder.append(scanner.nextLine());
+        }
+        scanner.close();
+        logger.info("[接收响应数据}\n{}",builder.toString());
+        localForwardChannel.closeChannel();
+    }
+
+    @Test
+    public void remoteForwardChannel() throws IOException {
+        SSHClient sshClient = QuickSSH.newInstance()
+                .host(account.host())
+                .port(account.port())
+                .username(account.username())
+                .password(account.password())
+                .build();
+        RemoteForwardChannel remoteForwardChannel = sshClient.remoteForwardChannel();
+        remoteForwardChannel.remoteForward(10000,"127.0.0.1",80);
+        System.out.println("请在远程机器本地(127.0.0.1)访问10000端口,该请求会转发至本机的80端口!");
+        try {
+            Thread.sleep(10000000l);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        remoteForwardChannel.cancelRemoteForward();
     }
 }

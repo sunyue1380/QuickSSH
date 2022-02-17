@@ -3,12 +3,15 @@ package cn.schoolwow.ssh.layer.channel;
 import cn.schoolwow.ssh.domain.SSHMessageCode;
 import cn.schoolwow.ssh.domain.stream.SSHString;
 import cn.schoolwow.ssh.layer.SSHSession;
+import cn.schoolwow.ssh.stream.SSHInputStream;
+import cn.schoolwow.ssh.stream.SSHInputStreamImpl;
+import cn.schoolwow.ssh.util.SSHUtil;
 
 import java.io.IOException;
 
-public class SessionChannel extends AbstracatChannel {
+public class ExecChannel extends AbstractChannel{
 
-    public SessionChannel(SSHSession sshSession) throws IOException {
+    public ExecChannel(SSHSession sshSession) {
         super(sshSession);
     }
 
@@ -25,28 +28,21 @@ public class SessionChannel extends AbstracatChannel {
         sos.writeBoolean(true);
         sos.writeSSHString(new SSHString(command));
         sshSession.writeSSHProtocolPayload(sos.toByteArray());
-        checkWantReply();
+        checkChannelRequestWantReply();
+
         SSHString data = null;
-        if(SSHMessageCode.SSH_MSG_CHANNEL_DATA.equals(sshSession.peekSSHMessageCode())){
-            data = readChannelData();
+        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_DATA,SSHMessageCode.SSH_MSG_CHANNEL_REQUEST);
+        if(payload[0]==SSHMessageCode.SSH_MSG_CHANNEL_DATA.value){
+            SSHInputStream sis = new SSHInputStreamImpl(payload);
+            sis.skipBytes(5);
+            data = sis.readSSHString();
+        }else{
+            SSHUtil.checkExitStatus(payload);
         }
-        byte[] payload = sshSession.readSSHProtocolPayload(SSHMessageCode.SSH_MSG_CHANNEL_REQUEST);
-        sshSession.checkExitStatus(payload);
         closeChannel();
         if(null==data){
             return null;
         }
         return new String(data.value,0,data.value.length-1,data.charset);
-    }
-
-    private void openSessionChannel() throws IOException {
-        sos.reset();
-        sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_OPEN.value);
-        sos.writeSSHString(new SSHString("session"));
-        sos.writeInt(senderChannel);
-        sos.writeInt(0x100000);
-        sos.writeInt(0x4000);
-        sshSession.writeSSHProtocolPayload(sos.toByteArray());
-        checkChannelOpen();
     }
 }

@@ -29,8 +29,6 @@ public enum FXPCode {
     SSH_FXP_DATA(103),
     SSH_FXP_NAME(104),
     SSH_FXP_ATTRS(105);
-    //    SSH_FXP_EXTENDED(200),
-//    SSH_FXP_EXTENDED_REPLY(201),
 
     public byte value;
 

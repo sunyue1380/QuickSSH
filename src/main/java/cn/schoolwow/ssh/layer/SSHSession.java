@@ -19,8 +19,11 @@ import java.io.IOException;
 import java.net.Socket;
 import java.security.SecureRandom;
 import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.Iterator;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class SSHSession {
     private Logger logger = LoggerFactory.getLogger(SSHSession.class);
@@ -46,9 +49,14 @@ public class SSHSession {
     public SSHKexAlgorithmNegotitation sshKexAlgorithmNegotitation = new SSHKexAlgorithmNegotitation();
 
     /**
-     * 频道id
+     * 发送频道id计数
      */
     public volatile int senderChannel = 1000;
+
+    /**
+     * 接收频道id计数
+     */
+    public volatile int recipientChannel = 0;
 
     /**
      * 会话id
@@ -65,10 +73,9 @@ public class SSHSession {
      */
     private volatile int serverSequenceNumber = 0;
 
-    /**
-     * SSH消息缓存
-     * */
-    private Queue<byte[]> sshMessageCache = new LinkedList<>();
+    private BlockingQueue<byte[]> channelPayloadCache = new LinkedBlockingQueue();
+
+    private Lock lock = new ReentrantLock();
 
     public SSHSession(Socket socket, QuickSSHConfig quickSSHConfig) throws IOException {
         this.sis = new SSHInputStreamImpl(socket.getInputStream());
@@ -77,13 +84,53 @@ public class SSHSession {
     }
 
     /**
-     * 查看下个SSH消息类型
-     * @return SSH消息类型
+     * 读取频道负载数据
+     * @param recipientChannel 频道id
+     * @param sshMessageCodes 预期读取的消息类型
+     *
+     * @return SSH协议负载数据
      */
-    public SSHMessageCode peekSSHMessageCode() throws IOException {
-        byte[] payload = doReadSSHProtocolPayload();
-        sshMessageCache.add(payload);
-        return SSHMessageCode.getSSHMessageCode(payload[0]);
+    public byte[] readChannelPayload(int recipientChannel, SSHMessageCode... sshMessageCodes) throws IOException {
+        byte[] payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
+        if(null!=payload){
+            return payload;
+        }
+        while(!lock.tryLock()){
+            try {
+                payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
+                if(null!=payload){
+                    return payload;
+                }
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        try {
+            while(true){
+                payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
+                if(null!=payload){
+                    return payload;
+                }
+                payload = doReadSSHProtocolPayload();
+                boolean matchSSHMessageCode = false;
+                for(SSHMessageCode sshMessageCode:sshMessageCodes){
+                    if(sshMessageCode.value==payload[0]){
+                        matchSSHMessageCode = true;
+                        break;
+                    }
+                }
+                if(matchSSHMessageCode&&SSHUtil.byteArray2Int(payload,1,4)==recipientChannel){
+                    return payload;
+                }else{
+                    if(!handleSSHMessage(payload)&&payload[0]>=90&&payload[0]<=100){
+                        channelPayloadCache.add(payload);
+                    }
+                }
+            }
+        }finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -94,68 +141,14 @@ public class SSHSession {
      */
     public byte[] readSSHProtocolPayload(SSHMessageCode... sshMessageCodes) throws IOException {
         byte[] payload = doReadSSHProtocolPayload();
-        while(true){
-            for(SSHMessageCode sshMessageCode:sshMessageCodes){
-                if(sshMessageCode.value==payload[0]){
+        while (true) {
+            for (SSHMessageCode sshMessageCode : sshMessageCodes) {
+                if (sshMessageCode.value == payload[0]) {
                     return payload;
                 }
             }
-            SSHInputStream sis = new SSHInputStreamImpl(payload);
-            SSHMessageCode sshMessageCode = SSHMessageCode.getSSHMessageCode(sis.read());
-            switch (sshMessageCode){
-                case SSH_MSG_GLOBAL_REQUEST:{
-                    String requestName = sis.readSSHString().toString();
-                    boolean wantReply = sis.readBoolean();
-                    logger.debug("[接收全局消息]消息类型:SSH_MSG_GLOBAL_REQUEST, 请求名称:{}, 是否需要回复:{}",requestName,wantReply);
-                    if(wantReply){
-                        logger.debug("[处理全局消息]发送SSH_MSG_REQUEST_FAILURE消息");
-                        writeSSHProtocolPayload(new byte[]{(byte) SSHMessageCode.SSH_MSG_REQUEST_FAILURE.value});
-                    }
-                }break;
-                case SSH_MSG_CHANNEL_REQUEST:{
-                    checkExitStatus(payload);
-                }break;
-                case SSH_MSG_USERAUTH_BANNER:{
-                    logger.debug("[服务端Banner消息]{}", sis.readSSHString().toString());
-                }break;
-                case SSH_MSG_CHANNEL_WINDOW_ADJUST:
-                case SSH_MSG_CHANNEL_EOF:{
-                    logger.debug("[忽略SSH消息]消息类型:{}", sshMessageCode.name());
-                };break;
-                case SSH_MSG_CHANNEL_EXTENDED_DATA:{
-                    int recipientChannel = sis.readInt();
-                    int dataTypeCode = sis.readInt();
-                    SSHString data = sis.readSSHString();
-                    logger.debug("[接收频道扩展消息]消息类型:SSH_MSG_CHANNEL_EXTENDED_DATA,本地频道id:{}, 扩展类型:{}, 数据:{}", recipientChannel, dataTypeCode, data);
-                };break;
-                case SSH_MSG_DISCONNECT:{
-                    int reasonCode = sis.readInt();
-                    String description = sis.readSSHString().toString();
-                    if (null == description || description.isEmpty()) {
-                        switch (reasonCode) {
-                            case 1: { description = "SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT"; }break;
-                            case 2: { description = "SSH_DISCONNECT_PROTOCOL_ERROR"; }break;
-                            case 3: { description = "SSH_DISCONNECT_KEY_EXCHANGE_FAILED"; }break;
-                            case 4: { description = "SSH_DISCONNECT_RESERVED"; }break;
-                            case 5: { description = "SSH_DISCONNECT_MAC_ERROR"; }break;
-                            case 6: { description = "SSH_DISCONNECT_COMPRESSION_ERROR"; }break;
-                            case 7: { description = "SSH_DISCONNECT_SERVICE_NOT_AVAILABLE"; }break;
-                            case 8: { description = "SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED"; }break;
-                            case 9: { description = "SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE"; }break;
-                            case 10: { description = "SSH_DISCONNECT_CONNECTION_LOST"; }break;
-                            case 11: { description = "SSH_DISCONNECT_BY_APPLICATION"; }break;
-                            case 12: { description = "SSH_DISCONNECT_TOO_MANY_CONNECTIONS"; }break;
-                            case 13: { description = "SSH_DISCONNECT_AUTH_CANCELLED_BY_USER"; }break;
-                            case 14: { description = "SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE"; }break;
-                            case 15: { description = "SSH_DISCONNECT_ILLEGAL_USER_NAME"; }break;
-                        }
-                    }
-                    throw new SSHException("服务端断开连接消息!错误码:" + reasonCode + ",描述:" + description);
-                }
-                default:{
-                    logger.warn("[无法处理非预期SSH消息]消息类型:{}", sshMessageCode.name());
-                    throw new SSHException("无法处理非预期SSH消息!消息类型:"+sshMessageCode);
-                }
+            if(!handleSSHMessage(payload)){
+                throw new SSHException("无法处理非预期消息!消息类型:"+SSHMessageCode.getSSHMessageCode(payload[0]));
             }
             payload = doReadSSHProtocolPayload();
         }
@@ -166,7 +159,7 @@ public class SSHSession {
      *
      * @param payload SSH协议负载数据
      */
-    public void writeSSHProtocolPayload(byte[] payload) throws IOException {
+    public synchronized void writeSSHProtocolPayload(byte[] payload) throws IOException {
         if (null != sshKexAlgorithmNegotitation.compress) {
             payload = sshKexAlgorithmNegotitation.compress.compress(payload);
         }
@@ -223,39 +216,68 @@ public class SSHSession {
         }
     }
 
-    /**检查返回码*/
-    public void checkExitStatus(byte[] payload) throws IOException {
+    /**
+     * 处理SSH消息
+     * @return 是否已经处理过该消息
+     * */
+    private boolean handleSSHMessage(byte[] payload) throws IOException{
         SSHInputStream sis = new SSHInputStreamImpl(payload);
-        sis.skipBytes(1);
-        int recipientChannel = sis.readInt();
-        String type = sis.readSSHString().toString();
-        if(null==type||type.isEmpty()){
-            throw new SSHException("无法处理服务端SSH_MSG_CHANNEL_REQUEST消息!类型值为空!");
-        }
-        switch (type){
-            case "exit-status":{
-                sis.readBoolean();
-                int exitStatus = sis.readInt();
-                if(exitStatus!=0){
-                    throw new SSHException("命令执行失败!返回状态码:"+exitStatus);
+        SSHMessageCode sshMessageCode = SSHMessageCode.getSSHMessageCode(sis.read());
+        switch (sshMessageCode){
+            case SSH_MSG_GLOBAL_REQUEST:{
+                String requestName = sis.readSSHString().toString();
+                boolean wantReply = sis.readBoolean();
+                logger.debug("[接收全局消息]消息类型:SSH_MSG_GLOBAL_REQUEST, 请求名称:{}, 是否需要回复:{}",requestName,wantReply);
+                if(wantReply){
+                    logger.debug("[处理全局消息]发送SSH_MSG_REQUEST_FAILURE消息");
+                    writeSSHProtocolPayload(new byte[]{(byte) SSHMessageCode.SSH_MSG_REQUEST_FAILURE.value});
                 }
             }break;
-            case "exit-signal":{
-                sis.readBoolean();
-                SSHString signalName = sis.readSSHString();
-                boolean coreDumped = sis.readBoolean();
-                SSHString errorMessage = sis.readSSHString();
-                throw new SSHException("命令执行失败!返回信号名称:"+signalName+",描述信息:"+errorMessage);
+            case SSH_MSG_USERAUTH_BANNER:{
+                logger.debug("[服务端Banner消息]{}", sis.readSSHString().toString());
+            }break;
+            case SSH_MSG_CHANNEL_WINDOW_ADJUST:
+            case SSH_MSG_CHANNEL_EOF:{
+                logger.debug("[忽略SSH消息]消息类型:{}", sshMessageCode.name());
+            };break;
+            case SSH_MSG_CHANNEL_EXTENDED_DATA:{
+                int recipientChannel = sis.readInt();
+                int dataTypeCode = sis.readInt();
+                SSHString data = sis.readSSHString();
+                logger.debug("[接收频道扩展消息]消息类型:SSH_MSG_CHANNEL_EXTENDED_DATA,本地频道id:{}, 扩展类型:{}, 数据:{}", recipientChannel, dataTypeCode, data);
+            };break;
+            case SSH_MSG_DISCONNECT:{
+                int reasonCode = sis.readInt();
+                String description = sis.readSSHString().toString();
+                if (null == description || description.isEmpty()) {
+                    switch (reasonCode) {
+                        case 1: { description = "SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT"; }break;
+                        case 2: { description = "SSH_DISCONNECT_PROTOCOL_ERROR"; }break;
+                        case 3: { description = "SSH_DISCONNECT_KEY_EXCHANGE_FAILED"; }break;
+                        case 4: { description = "SSH_DISCONNECT_RESERVED"; }break;
+                        case 5: { description = "SSH_DISCONNECT_MAC_ERROR"; }break;
+                        case 6: { description = "SSH_DISCONNECT_COMPRESSION_ERROR"; }break;
+                        case 7: { description = "SSH_DISCONNECT_SERVICE_NOT_AVAILABLE"; }break;
+                        case 8: { description = "SSH_DISCONNECT_PROTOCOL_VERSION_NOT_SUPPORTED"; }break;
+                        case 9: { description = "SSH_DISCONNECT_HOST_KEY_NOT_VERIFIABLE"; }break;
+                        case 10: { description = "SSH_DISCONNECT_CONNECTION_LOST"; }break;
+                        case 11: { description = "SSH_DISCONNECT_BY_APPLICATION"; }break;
+                        case 12: { description = "SSH_DISCONNECT_TOO_MANY_CONNECTIONS"; }break;
+                        case 13: { description = "SSH_DISCONNECT_AUTH_CANCELLED_BY_USER"; }break;
+                        case 14: { description = "SSH_DISCONNECT_NO_MORE_AUTH_METHODS_AVAILABLE"; }break;
+                        case 15: { description = "SSH_DISCONNECT_ILLEGAL_USER_NAME"; }break;
+                    }
+                }
+                throw new SSHException("服务端断开连接消息!错误码:" + reasonCode + ",描述:" + description);
             }
-            case "signal":{
-                sis.readBoolean();
-                SSHString signalName = sis.readSSHString();
-                throw new SSHException("命令执行失败!返回信号名称:"+signalName);
-            }
+            case SSH_MSG_CHANNEL_REQUEST:{
+                SSHUtil.checkExitStatus(payload);
+            }break;
             default:{
-                throw new SSHException("无法处理服务端SSH_MSG_CHANNEL_REQUEST消息!类型:"+type);
+                return false;
             }
         }
+        return true;
     }
 
     /**
@@ -264,9 +286,6 @@ public class SSHSession {
      * @return SSH协议负载数据
      */
     private byte[] doReadSSHProtocolPayload() throws IOException {
-        if(!sshMessageCache.isEmpty()){
-            return sshMessageCache.remove();
-        }
         //记录原始字节数组
         ByteArrayOutputStream sshProtocolBytesBaos = new ByteArrayOutputStream();
         //读取第一个块,获取包大小
@@ -335,6 +354,25 @@ public class SSHSession {
             serverSequenceNumber++;
         }
         return payload;
+    }
+
+    private byte[] findFromChannelPayloadCache(int recipientChannel,SSHMessageCode... sshMessageCodes){
+        Iterator<byte[]> iterator = channelPayloadCache.iterator();
+        while(iterator.hasNext()){
+            byte[] payload = iterator.next();
+            boolean matchSSHMessageCode = false;
+            for(SSHMessageCode sshMessageCode:sshMessageCodes){
+                if(sshMessageCode.value==payload[0]){
+                    matchSSHMessageCode = true;
+                    break;
+                }
+            }
+            if(matchSSHMessageCode&&(SSHUtil.byteArray2Int(payload,1,4)==recipientChannel)){
+                iterator.remove();
+                return payload;
+            }
+        }
+        return null;
     }
 
     /**

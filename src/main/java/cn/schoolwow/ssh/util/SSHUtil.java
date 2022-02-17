@@ -1,15 +1,44 @@
 package cn.schoolwow.ssh.util;
 
-import cn.schoolwow.ssh.domain.SSHMessageCode;
-import cn.schoolwow.ssh.layer.SSHSession;
+import cn.schoolwow.ssh.domain.exception.SSHException;
+import cn.schoolwow.ssh.domain.stream.SSHString;
+import cn.schoolwow.ssh.stream.SSHInputStream;
+import cn.schoolwow.ssh.stream.SSHInputStreamImpl;
 
 import java.io.IOException;
 
 public class SSHUtil {
-    public static void readAllSSHMessage(SSHSession sshSession) throws IOException {
-        while(true){
-            byte[] payload = sshSession.readSSHProtocolPayload();
-            System.out.println("接收SSH消息:"+ SSHMessageCode.getSSHMessageCode(payload[0]));
+    /**检查返回码*/
+    public static void checkExitStatus(byte[] payload) throws IOException {
+        SSHInputStream sis = new SSHInputStreamImpl(payload);
+        sis.skipBytes(5);
+        String type = sis.readSSHString().toString();
+        if(null==type||type.isEmpty()){
+            throw new SSHException("无法处理服务端SSH_MSG_CHANNEL_REQUEST消息!类型值为空!");
+        }
+        switch (type){
+            case "exit-status":{
+                sis.readBoolean();
+                int exitStatus = sis.readInt();
+                if(exitStatus!=0){
+                    throw new SSHException("命令执行失败!返回状态码:"+exitStatus);
+                }
+            }break;
+            case "exit-signal":{
+                sis.readBoolean();
+                SSHString signalName = sis.readSSHString();
+                boolean coreDumped = sis.readBoolean();
+                SSHString errorMessage = sis.readSSHString();
+                throw new SSHException("命令执行失败!返回信号名称:"+signalName+",描述信息:"+errorMessage);
+            }
+            case "signal":{
+                sis.readBoolean();
+                SSHString signalName = sis.readSSHString();
+                throw new SSHException("命令执行失败!返回信号名称:"+signalName);
+            }
+            default:{
+                throw new SSHException("无法处理服务端SSH_MSG_CHANNEL_REQUEST消息!类型:"+type);
+            }
         }
     }
 

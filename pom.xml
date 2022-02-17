@@ -16,6 +16,39 @@
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 
+    <parent>
+        <groupId>org.sonatype.oss</groupId>
+        <artifactId>oss-parent</artifactId>
+        <version>7</version>
+    </parent>
+
+    <licenses>
+        <license>
+            <name>GNU LESSER GENERAL PUBLIC LICENSE</name>
+            <url>http://www.gnu.org/licenses/lgpl-3.0-standalone.html</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>sunyue1380</name>
+            <email>648823596@qq.com</email>
+            <organization>schoolwow</organization>
+            <organizationUrl>http://blog.schoolwow.cn</organizationUrl>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>
+            scm:git:https://github.com/sunyue1380/QuickSSH.git
+        </connection>
+        <developerConnection>
+            scm:git:https://github.com/sunyue1380/QuickSSH.git
+        </developerConnection>
+        <url>https://github.com/sunyue1380/QuickSSH</url>
+        <tag>1.0.0</tag>
+    </scm>
+
     <dependencies>
         <dependency>
             <groupId>org.slf4j</groupId>

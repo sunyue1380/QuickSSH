@@ -39,6 +39,15 @@ String resut = sshClient.exec("pwd");
 //获取sftp命令
 SFTPChannel sftpChannel = sshClient.sftp();
 sftpChannel.xxxxxx();
+//1.0.1版本新增本地端口转发和远程端口转发
+LocalForwardChannel localForwardChannel = sshClient.localForwardChannel();
+//访问本机9999端口，系统会将发往9999端口的数据转发到服务器的80端口
+localForwardChannel.localForward(9999,"0.0.0.0",80);
+
+RemoteForwardChannel remoteForwardChannel = sshClient.remoteForwardChannel();
+//访问远程机器的本机10000端口，系统会将数据转发到本机的80端口
+remoteForwardChannel.remoteForward(10000,"127.0.0.1",80);
+System.out.println("请在远程机器本地(127.0.0.1)访问10000端口,该请求会转发至本机的80端口!");
 ```
 
 # 反馈
