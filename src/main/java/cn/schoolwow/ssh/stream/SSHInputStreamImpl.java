@@ -39,7 +39,7 @@ public class SSHInputStreamImpl implements SSHInputStream {
     public int read(byte[] b) throws IOException {
         int length = dis.read(b);
         if(length!=b.length){
-            throw new IllegalArgumentException("读取字节数组失败！期望读取长度:" + b.length + ",实际读取长度:" + length);
+            throw new IOException("读取字节数组失败！期望读取长度:" + b.length + ",实际读取长度:" + length);
         }
         return length;
     }
@@ -48,7 +48,7 @@ public class SSHInputStreamImpl implements SSHInputStream {
     public int read(byte[] b, int off, int len) throws IOException {
         int length = dis.read(b, off , len);
         if(length!=len){
-            throw new IllegalArgumentException("读取字节数组失败！期望读取长度:" + len + ",实际读取长度:" + length);
+            throw new IOException("读取字节数组失败！期望读取长度:" + len + ",实际读取长度:" + length);
         }
         return length;
     }
@@ -84,11 +84,11 @@ public class SSHInputStreamImpl implements SSHInputStream {
         byte[] bytes = new byte[length];
         int bytesOfRead = dis.read(bytes);
         if(bytesOfRead!=bytes.length){
-            throw new IllegalArgumentException("读取指定长度字节失败!期望字节长度:" + bytes.length + ",当前字节长度:" + bytesOfRead);
+            throw new IOException("读取指定长度字节失败!期望字节长度:" + bytes.length + ",当前字节长度:" + bytesOfRead);
         }
         BigInteger bigInteger = new BigInteger(bytes);
         if(!Arrays.equals(bytes,bigInteger.toByteArray())){
-            throw new IllegalArgumentException("Mpint类型转后前后不一致!期望字节数组:"+Arrays.toString(bytes)+",实际字节数组:"+Arrays.toString(bigInteger.toByteArray()));
+            throw new IOException("Mpint类型转后前后不一致!期望字节数组:"+Arrays.toString(bytes)+",实际字节数组:"+Arrays.toString(bigInteger.toByteArray()));
         }
         return bigInteger;
     }
@@ -101,7 +101,7 @@ public class SSHInputStreamImpl implements SSHInputStream {
             sshString.value = new byte[length];
             int bytesOfRead = read(sshString.value);
             if(bytesOfRead!=length){
-                throw new IllegalArgumentException("读取指定长度字节失败!期望字节长度:" + length + ",当前字节长度:" + bytesOfRead);
+                throw new IOException("读取指定长度字节失败!期望字节长度:" + length + ",当前字节长度:" + bytesOfRead);
             }
         }
         return sshString;

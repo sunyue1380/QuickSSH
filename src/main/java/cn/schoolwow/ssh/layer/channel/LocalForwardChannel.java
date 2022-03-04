@@ -1,5 +1,6 @@
 package cn.schoolwow.ssh.layer.channel;
 
+import cn.schoolwow.ssh.SSHClient;
 import cn.schoolwow.ssh.domain.SSHMessageCode;
 import cn.schoolwow.ssh.domain.stream.SSHString;
 import cn.schoolwow.ssh.layer.SSHSession;
@@ -12,45 +13,50 @@ import java.net.Socket;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
-/**本地端口转发*/
-public class LocalForwardChannel extends AbstractChannel{
+/**
+ * 本地端口转发
+ */
+public class LocalForwardChannel extends AbstractChannel {
     private Logger logger = LoggerFactory.getLogger(LocalForwardChannel.class);
 
-    /**本地端口转发线程池*/
+    /**
+     * 本地端口转发线程池
+     */
     private ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-    public LocalForwardChannel(SSHSession sshSession) {
-        super(sshSession);
+    public LocalForwardChannel(SSHSession sshSession, SSHClient sshClient) {
+        super(sshSession, sshClient);
     }
 
     /**
      * 开启本地端口转发
-     * @param localPort 本地监听端口
+     *
+     * @param localPort     本地监听端口
      * @param remoteAddress 转发到远程主机地址
-     * @param remotePort 转发到远程主机端口
-     * */
+     * @param remotePort    转发到远程主机端口
+     */
     public void localForward(int localPort, String remoteAddress, int remotePort) throws IOException {
-        threadPoolExecutor.execute(()->{
+        threadPoolExecutor.execute(() -> {
             try {
                 logger.debug("[开启本地端口转发]本地端口:{}, 远程主机地址:{}, 远程端口:{}", localPort, remoteAddress, remotePort);
                 ServerSocket serverSocket = new ServerSocket(localPort);
-                while(true){
+                while (true) {
                     Socket socket = serverSocket.accept();
-                    threadPoolExecutor.execute(()->{
-                        LocalForwardChannel localForwardChannel = new LocalForwardChannel(sshSession);
+                    threadPoolExecutor.execute(() -> {
+                        LocalForwardChannel localForwardChannel = new LocalForwardChannel(sshSession, sshClient);
                         try {
-                            localForwardChannel.openLocalForwardChannel(remoteAddress,remotePort,socket.getInetAddress().getHostAddress(),socket.getLocalPort());
-                            threadPoolExecutor.execute(()->{
+                            localForwardChannel.openLocalForwardChannel(remoteAddress, remotePort, socket.getInetAddress().getHostAddress(), socket.getLocalPort());
+                            threadPoolExecutor.execute(() -> {
                                 byte[] buffer = new byte[8192];
                                 int length = 0;
                                 try {
-                                    while((length=socket.getInputStream().read(buffer,0,buffer.length))!=-1){
-                                        localForwardChannel.writeChannelData(buffer,0,length);
+                                    while ((length = socket.getInputStream().read(buffer, 0, buffer.length)) != -1) {
+                                        localForwardChannel.writeChannelData(buffer, 0, length);
                                     }
                                     socket.shutdownInput();
-                                }catch (IOException e){
+                                } catch (IOException e) {
                                     e.printStackTrace();
-                                }finally {
+                                } finally {
                                     try {
                                         localForwardChannel.closeChannel();
                                     } catch (IOException e) {
@@ -58,18 +64,18 @@ public class LocalForwardChannel extends AbstractChannel{
                                     }
                                 }
                             });
-                            threadPoolExecutor.execute(()->{
+                            threadPoolExecutor.execute(() -> {
                                 try {
-                                    while(!socket.isOutputShutdown()){
+                                    while (!socket.isOutputShutdown()) {
                                         SSHString data = localForwardChannel.readChannelData();
-                                        if(null!=data){
+                                        if (null != data) {
                                             socket.getOutputStream().write(data.value);
                                             socket.getOutputStream().flush();
-                                        }else if(socket.isInputShutdown()){
+                                        } else if (socket.isInputShutdown()) {
                                             socket.shutdownOutput();
                                         }
                                     }
-                                }catch (IOException e){
+                                } catch (IOException e) {
                                     e.printStackTrace();
                                 }
                             });
@@ -84,12 +90,16 @@ public class LocalForwardChannel extends AbstractChannel{
         });
     }
 
-    /**关闭本地端口转发*/
+    /**
+     * 关闭本地端口转发
+     */
     public void cancelLocalForward() throws IOException {
         threadPoolExecutor.shutdownNow();
     }
 
-    /**创建本地端口转发频道*/
+    /**
+     * 创建本地端口转发频道
+     */
     private void openLocalForwardChannel(String connectAddress, int connectPort, String originatorAddress, int originatorPort) throws IOException {
         sos.reset();
         sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_OPEN.value);

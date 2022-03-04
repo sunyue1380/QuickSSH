@@ -10,8 +10,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 
 public class QuickSSH {
     private QuickSSHConfig quickSSHConfig = new QuickSSHConfig();

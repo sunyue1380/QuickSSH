@@ -1,5 +1,6 @@
 package cn.schoolwow.ssh.layer.channel;
 
+import cn.schoolwow.ssh.SSHClient;
 import cn.schoolwow.ssh.domain.SSHMessageCode;
 import cn.schoolwow.ssh.domain.exception.SSHException;
 import cn.schoolwow.ssh.domain.stream.SSHString;
@@ -17,48 +18,55 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 
-/**远程端口转发*/
-public class RemoteForwardChannel extends AbstractChannel{
+/**
+ * 远程端口转发
+ */
+public class RemoteForwardChannel extends AbstractChannel {
     private Logger logger = LoggerFactory.getLogger(RemoteForwardChannel.class);
-    /**远程端口转发线程池*/
+    /**
+     * 远程端口转发线程池
+     */
     private ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-    /**远程端口转发列表*/
+    /**
+     * 远程端口转发列表
+     */
     private List<Integer> remoteForwardPortList = new ArrayList<>();
 
-    public RemoteForwardChannel(SSHSession sshSession) {
-        super(sshSession);
+    public RemoteForwardChannel(SSHSession sshSession, SSHClient sshClient) {
+        super(sshSession, sshClient);
     }
 
     /**
      * 开启远程端口转发
+     *
      * @param remoteForwardPort 远程转发端口
-     * @param localAddress 访问本地主机地址
-     * @param localPort 访问本地主机端口
-     * */
+     * @param localAddress      访问本地主机地址
+     * @param localPort         访问本地主机端口
+     */
     public void remoteForward(int remoteForwardPort, String localAddress, int localPort) throws IOException {
         logger.debug("[开启远程端口转发]远程端口:{}, 本地主机地址:{}, 本地端口:{}", remoteForwardPort, localAddress, localPort);
         requestForward(remoteForwardPort);
-        threadPoolExecutor.execute(()->{
-            RemoteForwardChannel remoteForwardChannel = new RemoteForwardChannel(sshSession);
+        threadPoolExecutor.execute(() -> {
+            RemoteForwardChannel remoteForwardChannel = new RemoteForwardChannel(sshSession, sshClient);
             try {
                 remoteForwardChannel.receiveRemoteForwardChannel(remoteForwardPort);
                 Socket socket = new Socket();
-                socket.connect(new InetSocketAddress(localAddress,localPort));
-                threadPoolExecutor.execute(()->{
+                socket.connect(new InetSocketAddress(localAddress, localPort));
+                threadPoolExecutor.execute(() -> {
                     try {
-                        while(!socket.isOutputShutdown()){
+                        while (!socket.isOutputShutdown()) {
                             SSHString data = remoteForwardChannel.readChannelData();
-                            if(null==data){
+                            if (null == data) {
                                 socket.shutdownOutput();
-                            }else{
+                            } else {
                                 socket.getOutputStream().write(data.value);
                                 socket.getOutputStream().flush();
                             }
                         }
-                    }catch (IOException e){
+                    } catch (IOException e) {
                         e.printStackTrace();
-                    }finally {
+                    } finally {
                         try {
                             remoteForwardChannel.closeChannel();
                         } catch (IOException e) {
@@ -66,15 +74,15 @@ public class RemoteForwardChannel extends AbstractChannel{
                         }
                     }
                 });
-                threadPoolExecutor.execute(()->{
+                threadPoolExecutor.execute(() -> {
                     byte[] buffer = new byte[8192];
                     int length = 0;
                     try {
-                        while((length=socket.getInputStream().read(buffer,0,buffer.length))!=-1){
-                            remoteForwardChannel.writeChannelData(buffer,0,length);
+                        while ((length = socket.getInputStream().read(buffer, 0, buffer.length)) != -1) {
+                            remoteForwardChannel.writeChannelData(buffer, 0, length);
                         }
                         socket.shutdownInput();
-                    }catch (IOException e){
+                    } catch (IOException e) {
                         e.printStackTrace();
                     }
                 });
@@ -84,27 +92,31 @@ public class RemoteForwardChannel extends AbstractChannel{
         });
     }
 
-    /**关闭远程端口转发*/
+    /**
+     * 关闭远程端口转发
+     */
     public void cancelRemoteForward() throws IOException {
         cancelRequestForward();
         threadPoolExecutor.shutdownNow();
     }
 
-    /**接收远程端口转发频道请求*/
+    /**
+     * 接收远程端口转发频道请求
+     */
     private void receiveRemoteForwardChannel(int remoteForwardPort) throws IOException {
         byte[] payload = sshSession.readSSHProtocolPayload(SSHMessageCode.SSH_MSG_CHANNEL_OPEN);
         SSHInputStream sis = new SSHInputStreamImpl(payload);
         sis.skipBytes(1);
         String requestType = sis.readSSHString().toString();
-        if(!"forwarded-tcpip".equalsIgnoreCase(requestType)){
-            throw new SSHException("远程端口转发接收频道类型不匹配!预期类型:forwarded-tcpip,实际类型:"+requestType);
+        if (!"forwarded-tcpip".equalsIgnoreCase(requestType)) {
+            throw new SSHException("远程端口转发接收频道类型不匹配!预期类型:forwarded-tcpip,实际类型:" + requestType);
         }
         this.recipientChannel = sis.readInt();
         sis.skipBytes(8);
         SSHString connectedAddress = sis.readSSHString();
         int connectedPort = sis.readInt();
-        if(remoteForwardPort!=connectedPort){
-            throw new SSHException("远程端口转发接收频道端口不匹配!预期端口"+remoteForwardPort+",实际端口:"+connectedPort);
+        if (remoteForwardPort != connectedPort) {
+            throw new SSHException("远程端口转发接收频道端口不匹配!预期端口" + remoteForwardPort + ",实际端口:" + connectedPort);
         }
         SSHString originatorAddress = sis.readSSHString();
         int originatorPort = sis.readInt();
@@ -122,7 +134,7 @@ public class RemoteForwardChannel extends AbstractChannel{
 
     /**
      * 请求TCP/IP协议转发
-     * */
+     */
     private void requestForward(int remoteForwardPort) throws IOException {
         sos.reset();
         sos.writeByte(SSHMessageCode.SSH_MSG_GLOBAL_REQUEST.value);
@@ -138,10 +150,11 @@ public class RemoteForwardChannel extends AbstractChannel{
 
     /**
      * 取消TCP/IP协议转发
-     * @param port  服务端绑定端口
-     * */
+     *
+     * @param port 服务端绑定端口
+     */
     private void cancelRequestForward() throws IOException {
-        for(Integer remoteForwardPort:remoteForwardPortList){
+        for (Integer remoteForwardPort : remoteForwardPortList) {
             sos.reset();
             sos.writeByte(SSHMessageCode.SSH_MSG_GLOBAL_REQUEST.value);
             sos.writeSSHString(new SSHString("cancel-tcpip-forward"));
@@ -150,7 +163,7 @@ public class RemoteForwardChannel extends AbstractChannel{
             sos.writeInt(remoteForwardPort);
             sshSession.writeSSHProtocolPayload(sos.toByteArray());
             checkGlobalRequestWantReply();
-            logger.debug("[取消服务端端口转发]服务端转发端口:{}",remoteForwardPort);
+            logger.debug("[取消服务端端口转发]服务端转发端口:{}", remoteForwardPort);
         }
     }
 }

@@ -3,7 +3,6 @@ package cn.schoolwow.ssh.domain;
 import cn.schoolwow.ssh.domain.kex.SSHClientSupportAlgorithm;
 
 import java.nio.file.Path;
-import java.util.concurrent.ThreadPoolExecutor;
 
 public class QuickSSHConfig {
     /**主机IP地址*/

@@ -38,7 +38,7 @@ public class QuickSSHTest {
                 .host(account.host())
                 .port(account.port())
                 .username(account.username())
-                .publickey(System.getProperty("user.dir") + "/" + account.publickeyFilePath(),account.publickeyPassphrase())
+                .publickey(System.getProperty("user.dir") + "/" + account.publickeyFilePath(), account.publickeyPassphrase())
                 .build();
     }
 
@@ -50,13 +50,13 @@ public class QuickSSHTest {
                 .username(account.username())
                 .password(account.password())
                 .build();
-        Assert.assertEquals("/root",sshClient.exec("pwd"));
-        Assert.assertEquals("root",sshClient.exec("echo $USER"));
+        Assert.assertEquals("/root", sshClient.exec("pwd"));
+        Assert.assertEquals("root", sshClient.exec("echo $USER"));
         sshClient.disconnect();
     }
 
     @Test
-    public void sftp() throws IOException {
+    public void sftpChannel() throws IOException {
         SSHClient sshClient = QuickSSH.newInstance()
                 .host(account.host())
                 .port(account.port())
@@ -66,40 +66,40 @@ public class QuickSSHTest {
         String directory = "/opt/sftp";
         sshClient.exec("rm -R " + directory + " && mkdir -p " + directory + "/");
 
-        SFTPChannel sftpChannel = sshClient.sftp();
+        SFTPChannel sftpChannel = sshClient.sftpChannel();
         sftpChannel.createDirectory(directory + "/aa");
-        List<SFTPFile> sftpFileList = sftpChannel.scanDirectory(directory+"");
-        Assert.assertEquals(sftpFileList.size(),1);
-        Assert.assertEquals("aa",sftpFileList.get(0).fileName);
+        List<SFTPFile> sftpFileList = sftpChannel.scanDirectory(directory + "");
+        Assert.assertEquals(sftpFileList.size(), 1);
+        Assert.assertEquals("aa", sftpFileList.get(0).fileName);
 
-        sftpChannel.writeFile(directory+"/bb","hello,world!".getBytes(StandardCharsets.UTF_8));
-        byte[] data = sftpChannel.readFile(directory+"/bb");
-        Assert.assertEquals("hello,world!",new String(data,StandardCharsets.UTF_8));
-        sftpChannel.appendFile(directory+"/bb","sftp".getBytes(StandardCharsets.UTF_8));
-        data = sftpChannel.readFile(directory+"/bb");
-        Assert.assertEquals("hello,world!sftp", new String(data,StandardCharsets.UTF_8));
-        data = sftpChannel.readFile(directory+"/bb",1,4);
-        Assert.assertEquals("ello",new String(data,StandardCharsets.UTF_8));
+        sftpChannel.writeFile(directory + "/bb", "hello,world!".getBytes(StandardCharsets.UTF_8));
+        byte[] data = sftpChannel.readFile(directory + "/bb");
+        Assert.assertEquals("hello,world!", new String(data, StandardCharsets.UTF_8));
+        sftpChannel.appendFile(directory + "/bb", "sftp".getBytes(StandardCharsets.UTF_8));
+        data = sftpChannel.readFile(directory + "/bb");
+        Assert.assertEquals("hello,world!sftp", new String(data, StandardCharsets.UTF_8));
+        data = sftpChannel.readFile(directory + "/bb", 1, 4);
+        Assert.assertEquals("ello", new String(data, StandardCharsets.UTF_8));
 
-        sftpChannel.deleteDirectory(directory+"/aa");
-        sftpFileList = sftpChannel.scanDirectory(directory+"");
-        Assert.assertEquals(sftpFileList.size(),1);
-        Assert.assertEquals("bb",sftpFileList.get(0).fileName);
+        sftpChannel.deleteDirectory(directory + "/aa");
+        sftpFileList = sftpChannel.scanDirectory(directory + "");
+        Assert.assertEquals(sftpFileList.size(), 1);
+        Assert.assertEquals("bb", sftpFileList.get(0).fileName);
 
         String realPath = sftpChannel.canonicalize(".");
-        Assert.assertEquals("/root",realPath);
+        Assert.assertEquals("/root", realPath);
 
-        sftpChannel.rename(directory+"/bb",directory+"/cc");
-        sftpFileList = sftpChannel.scanDirectory(directory+"");
-        Assert.assertEquals(sftpFileList.size(),1);
+        sftpChannel.rename(directory + "/bb", directory + "/cc");
+        sftpFileList = sftpChannel.scanDirectory(directory + "");
+        Assert.assertEquals(sftpFileList.size(), 1);
         Assert.assertEquals("cc", sftpFileList.get(0).fileName);
 
-        SFTPFileAttribute sftpFileAttribute = sftpChannel.getSFTPFileAttribute(directory+"/cc");
+        SFTPFileAttribute sftpFileAttribute = sftpChannel.getSFTPFileAttribute(directory + "/cc");
         Assert.assertEquals("hello,world!sftp".length(), sftpFileAttribute.size);
 
-        sftpChannel.createSymbolicLinkPath(directory+"/cc",directory+"/dd");
-        String symbolicPath = sftpChannel.readSymbolicLinkPath(directory+"/dd");
-        Assert.assertEquals(directory+"/cc", symbolicPath);
+        sftpChannel.createSymbolicLinkPath(directory + "/cc", directory + "/dd");
+        String symbolicPath = sftpChannel.readSymbolicLinkPath(directory + "/dd");
+        Assert.assertEquals(directory + "/cc", symbolicPath);
 
         sftpChannel.closeChannel();
         sshClient.exec("rm -R " + directory);
@@ -115,9 +115,9 @@ public class QuickSSHTest {
                 .password(account.password())
                 .build();
         LocalForwardChannel localForwardChannel = sshClient.localForwardChannel();
-        localForwardChannel.localForward(9999,"0.0.0.0",80);
+        localForwardChannel.localForward(9999, "0.0.0.0", 80);
         Socket socket = new Socket();
-        socket.connect(new InetSocketAddress("127.0.0.1",9999));
+        socket.connect(new InetSocketAddress("127.0.0.1", 9999));
         String request = "GET / HTTP/1.1\r\n" +
                 "Host: 127.0.0.1:9999\r\n" +
                 "Connection: Close\r\n" +
@@ -127,14 +127,14 @@ public class QuickSSHTest {
         socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
         socket.getOutputStream().flush();
         socket.shutdownOutput();
-        logger.info("[发送请求数据}\n{}",request);
+        logger.info("[发送请求数据}\n{}", request);
         Scanner scanner = new Scanner(socket.getInputStream());
         StringBuilder builder = new StringBuilder();
-        while(scanner.hasNextLine()){
+        while (scanner.hasNextLine()) {
             builder.append(scanner.nextLine());
         }
         scanner.close();
-        logger.info("[接收响应数据}\n{}",builder.toString());
+        logger.info("[接收响应数据}\n{}", builder.toString());
         localForwardChannel.closeChannel();
     }
 
@@ -147,7 +147,7 @@ public class QuickSSHTest {
                 .password(account.password())
                 .build();
         RemoteForwardChannel remoteForwardChannel = sshClient.remoteForwardChannel();
-        remoteForwardChannel.remoteForward(10000,"127.0.0.1",80);
+        remoteForwardChannel.remoteForward(10000, "127.0.0.1", 80);
         System.out.println("请在远程机器本地(127.0.0.1)访问10000端口,该请求会转发至本机的80端口!");
         try {
             Thread.sleep(10000000l);
