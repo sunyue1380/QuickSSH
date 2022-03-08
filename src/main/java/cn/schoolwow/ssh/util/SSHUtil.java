@@ -8,8 +8,12 @@ import cn.schoolwow.ssh.stream.SSHInputStreamImpl;
 import java.io.IOException;
 
 public class SSHUtil {
-    /**检查返回码*/
-    public static void checkExitStatus(byte[] payload) throws IOException {
+    /**
+     * 检查返回码
+     * @param payload 负载数据
+     * @param extendMessage 扩展消息
+     * */
+    public static void checkExitStatus(byte[] payload, String extendMessage) throws IOException {
         SSHInputStream sis = new SSHInputStreamImpl(payload);
         sis.skipBytes(5);
         String type = sis.readSSHString().toString();
@@ -21,7 +25,11 @@ public class SSHUtil {
                 sis.readBoolean();
                 int exitStatus = sis.readInt();
                 if(exitStatus!=0){
-                    throw new SSHException("命令执行失败!返回状态码:"+exitStatus);
+                    if(null!=extendMessage&&!extendMessage.isEmpty()){
+                        throw new SSHException("命令执行失败!返回状态码:"+exitStatus+",错误信息:"+extendMessage);
+                    }else{
+                        throw new SSHException("命令执行失败!返回状态码:"+exitStatus);
+                    }
                 }
             }break;
             case "exit-signal":{

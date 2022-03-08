@@ -271,7 +271,7 @@ public class SSHSession {
                 throw new SSHException("服务端断开连接消息!错误码:" + reasonCode + ",描述:" + description);
             }
             case SSH_MSG_CHANNEL_REQUEST:{
-                SSHUtil.checkExitStatus(payload);
+                SSHUtil.checkExitStatus(payload,null);
             }break;
             default:{
                 return false;

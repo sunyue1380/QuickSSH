@@ -51,7 +51,7 @@ public class ExecChannel extends AbstractChannel {
             sis.skipBytes(5);
             data = sis.readSSHString();
         } else {
-            SSHUtil.checkExitStatus(payload);
+            SSHUtil.checkExitStatus(payload,extendDataBuilder.toString());
         }
         closeChannel();
         if (null == data) {
