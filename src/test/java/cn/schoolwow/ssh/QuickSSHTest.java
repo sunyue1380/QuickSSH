@@ -147,11 +147,11 @@ public class QuickSSHTest {
                 .password(account.password())
                 .build();
         RemoteForwardChannel remoteForwardChannel = sshClient.remoteForwardChannel();
-        int remoteForwardPort = 10000, localPort = 4000;
+        int remoteForwardPort = 10000, localPort = 8080;
         remoteForwardChannel.remoteForward(remoteForwardPort, "127.0.0.1", localPort);
         System.out.println("请在远程机器本地(127.0.0.1)访问"+remoteForwardPort+"端口,该请求会转发至本机的"+localPort+"端口!");
         try {
-            Thread.sleep(10000000l);
+            Thread.sleep(4000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

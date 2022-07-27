@@ -151,9 +151,10 @@ public class RemoteForwardChannel extends AbstractChannel {
                         //开启远程端口数据监听线程
                         sshSession.quickSSHConfig.remoteForwardChannelThreadPoolExecutor.execute(() -> {
                             try {
-                                while (socket.isConnected()&&!socket.isOutputShutdown()&&!socket.isClosed()) {
+                                while (true) {
                                     SSHString data = remoteForwardChannel.readChannelData();
                                     if (null == data) {
+                                        socket.close();
                                         break;
                                     } else {
                                         socket.getOutputStream().write(data.value);
@@ -164,7 +165,6 @@ public class RemoteForwardChannel extends AbstractChannel {
                                 e.printStackTrace();
                             } finally {
                                 try {
-                                    socket.close();
                                     remoteForwardChannel.closeChannel();
                                 } catch (IOException e) {
                                     e.printStackTrace();
@@ -176,16 +176,18 @@ public class RemoteForwardChannel extends AbstractChannel {
                             byte[] buffer = new byte[8192];
                             int length = 0;
                             try {
-                                while ((length = socket.getInputStream().read(buffer, 0, buffer.length)) != -1) {
-                                    remoteForwardChannel.writeChannelData(buffer, 0, length);
+                                while(!remoteForwardChannel.isChannelClosed()){
+                                    while ((length = socket.getInputStream().read(buffer, 0, buffer.length)) != -1) {
+                                        remoteForwardChannel.writeChannelData(buffer, 0, length);
+                                    }
                                 }
-                                socket.shutdownInput();
                             } catch (IOException e) {
                                 e.printStackTrace();
+                            }finally {
                                 try {
                                     socket.close();
-                                } catch (IOException ex) {
-                                    ex.printStackTrace();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
                                 }
                             }
                         });
