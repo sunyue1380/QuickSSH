@@ -64,7 +64,7 @@ public class QuickSSHTest {
                 .password(account.password())
                 .build();
         String directory = "/opt/sftp";
-        sshClient.exec("rm -R " + directory + " && mkdir -p " + directory + "/");
+        sshClient.exec("rm -R " + directory + "; mkdir -p " + directory + "/");
 
         SFTPChannel sftpChannel = sshClient.sftpChannel();
         sftpChannel.createDirectory(directory + "/aa");
@@ -107,7 +107,7 @@ public class QuickSSHTest {
     }
 
     @Test
-    public void localForwardChannel() throws IOException {
+    public void localForwardChannel() throws IOException, InterruptedException {
         SSHClient sshClient = QuickSSH.newInstance()
                 .host(account.host())
                 .port(account.port())
@@ -127,14 +127,14 @@ public class QuickSSHTest {
         socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
         socket.getOutputStream().flush();
         socket.shutdownOutput();
-        logger.info("[发送请求数据}\n{}", request);
+        logger.info("[发送请求数据]\n{}", request);
         Scanner scanner = new Scanner(socket.getInputStream());
         StringBuilder builder = new StringBuilder();
         while (scanner.hasNextLine()) {
-            builder.append(scanner.nextLine());
+            builder.append(scanner.nextLine()+"\r\n");
         }
         scanner.close();
-        logger.info("[接收响应数据}\n{}", builder.toString());
+        logger.info("[接收响应数据]\n{}", builder.toString());
         localForwardChannel.closeChannel();
     }
 
@@ -147,13 +147,14 @@ public class QuickSSHTest {
                 .password(account.password())
                 .build();
         RemoteForwardChannel remoteForwardChannel = sshClient.remoteForwardChannel();
-        remoteForwardChannel.remoteForward(10000, "127.0.0.1", 80);
-        System.out.println("请在远程机器本地(127.0.0.1)访问10000端口,该请求会转发至本机的80端口!");
+        int remoteForwardPort = 10000, localPort = 4000;
+        remoteForwardChannel.remoteForward(remoteForwardPort, "127.0.0.1", localPort);
+        System.out.println("请在远程机器本地(127.0.0.1)访问"+remoteForwardPort+"端口,该请求会转发至本机的"+localPort+"端口!");
         try {
             Thread.sleep(10000000l);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        remoteForwardChannel.cancelRemoteForward();
+        remoteForwardChannel.closeChannel();
     }
 }

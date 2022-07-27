@@ -73,9 +73,20 @@ public class SSHSession {
      */
     private volatile int serverSequenceNumber = 0;
 
+    /**
+     * SSH协议包负载数据缓存
+     * */
+    private BlockingQueue<byte[]> sshProtocolPayloadCache = new LinkedBlockingQueue();
+
+    /**
+     * 频道负载数据缓存
+     * */
     private BlockingQueue<byte[]> channelPayloadCache = new LinkedBlockingQueue();
 
-    private Lock lock = new ReentrantLock();
+    /**
+     * 读取协议体同步锁
+     * */
+    private Lock readSSHProtocolPayloadLock = new ReentrantLock();
 
     public SSHSession(Socket socket, QuickSSHConfig quickSSHConfig) throws IOException {
         this.sis = new SSHInputStreamImpl(socket.getInputStream());
@@ -91,45 +102,30 @@ public class SSHSession {
      * @return SSH协议负载数据
      */
     public byte[] readChannelPayload(int recipientChannel, SSHMessageCode... sshMessageCodes) throws IOException {
-        byte[] payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
-        if(null!=payload){
-            return payload;
-        }
-        while(!lock.tryLock()){
-            try {
-                payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
-                if(null!=payload){
-                    return payload;
-                }
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        while(true){
+            byte[] payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
+            if(null!=payload){
+                return payload;
             }
-        }
-        try {
-            while(true){
-                payload = findFromChannelPayloadCache(recipientChannel,sshMessageCodes);
-                if(null!=payload){
-                    return payload;
-                }
-                payload = doReadSSHProtocolPayload();
-                boolean matchSSHMessageCode = false;
-                for(SSHMessageCode sshMessageCode:sshMessageCodes){
-                    if(sshMessageCode.value==payload[0]){
-                        matchSSHMessageCode = true;
-                        break;
+            if(readSSHProtocolPayloadLock.tryLock()){
+                try {
+                    payload = doReadSSHProtocolPayload();
+                    for(SSHMessageCode sshMessageCode:sshMessageCodes){
+                        if(sshMessageCode.value==payload[0]&&SSHUtil.byteArray2Int(payload,1,4)==recipientChannel){
+                            return payload;
+                        }
                     }
+                    handleSSHMessage(payload);
+                }finally {
+                    readSSHProtocolPayloadLock.unlock();
                 }
-                if(matchSSHMessageCode&&SSHUtil.byteArray2Int(payload,1,4)==recipientChannel){
-                    return payload;
-                }else{
-                    if(!handleSSHMessage(payload)&&payload[0]>=90&&payload[0]<=100){
-                        channelPayloadCache.add(payload);
-                    }
+            }else{
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
-        }finally {
-            lock.unlock();
         }
     }
 
@@ -140,17 +136,30 @@ public class SSHSession {
      * @return SSH协议负载数据
      */
     public byte[] readSSHProtocolPayload(SSHMessageCode... sshMessageCodes) throws IOException {
-        byte[] payload = doReadSSHProtocolPayload();
         while (true) {
-            for (SSHMessageCode sshMessageCode : sshMessageCodes) {
-                if (sshMessageCode.value == payload[0]) {
-                    return payload;
+            byte[] payload = findFromSSHPrototolPayloadCache(sshMessageCodes);
+            if(null!=payload){
+                return payload;
+            }
+            if(readSSHProtocolPayloadLock.tryLock()){
+                try {
+                    payload = doReadSSHProtocolPayload();
+                    for (SSHMessageCode sshMessageCode : sshMessageCodes) {
+                        if (sshMessageCode.value == payload[0]) {
+                            return payload;
+                        }
+                    }
+                    handleSSHMessage(payload);
+                }finally {
+                    readSSHProtocolPayloadLock.unlock();
+                }
+            }else{
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
-            if(!handleSSHMessage(payload)){
-                throw new SSHException("无法处理非预期消息!消息类型:"+SSHMessageCode.getSSHMessageCode(payload[0]));
-            }
-            payload = doReadSSHProtocolPayload();
         }
     }
 
@@ -238,7 +247,7 @@ public class SSHSession {
             }break;
             case SSH_MSG_CHANNEL_WINDOW_ADJUST:
             case SSH_MSG_CHANNEL_EOF:{
-                logger.debug("[忽略SSH消息]消息类型:{}", sshMessageCode.name());
+                logger.trace("[忽略SSH消息]消息类型:{}", sshMessageCode.name());
             };break;
             case SSH_MSG_CHANNEL_EXTENDED_DATA:{
                 int recipientChannel = sis.readInt();
@@ -274,7 +283,13 @@ public class SSHSession {
                 SSHUtil.checkExitStatus(payload,null);
             }break;
             default:{
-                return false;
+                if(payload[0]>=90&&payload[0]<=100){
+                    logger.trace("[添加频道数据缓存]{}", SSHMessageCode.getSSHMessageCode(payload[0]));
+                    channelPayloadCache.add(payload);
+                }else{
+                    logger.trace("[添加SSH协议缓存]{}", SSHMessageCode.getSSHMessageCode(payload[0]));
+                    sshProtocolPayloadCache.add(payload);
+                }
             }
         }
         return true;
@@ -356,20 +371,31 @@ public class SSHSession {
         return payload;
     }
 
+    /**从SSH协议包缓存数据中查找数据*/
+    private byte[] findFromSSHPrototolPayloadCache(SSHMessageCode... sshMessageCodes){
+        Iterator<byte[]> iterator = sshProtocolPayloadCache.iterator();
+        while(iterator.hasNext()){
+            byte[] payload = iterator.next();
+            for(SSHMessageCode sshMessageCode:sshMessageCodes){
+                if(sshMessageCode.value==payload[0]){
+                    iterator.remove();
+                    return payload;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**从频道缓存数据中查找频道数据*/
     private byte[] findFromChannelPayloadCache(int recipientChannel,SSHMessageCode... sshMessageCodes){
         Iterator<byte[]> iterator = channelPayloadCache.iterator();
         while(iterator.hasNext()){
             byte[] payload = iterator.next();
-            boolean matchSSHMessageCode = false;
             for(SSHMessageCode sshMessageCode:sshMessageCodes){
-                if(sshMessageCode.value==payload[0]){
-                    matchSSHMessageCode = true;
-                    break;
+                if(sshMessageCode.value==payload[0]&&(SSHUtil.byteArray2Int(payload,1,4)==recipientChannel)){
+                    iterator.remove();
+                    return payload;
                 }
-            }
-            if(matchSSHMessageCode&&(SSHUtil.byteArray2Int(payload,1,4)==recipientChannel)){
-                iterator.remove();
-                return payload;
             }
         }
         return null;

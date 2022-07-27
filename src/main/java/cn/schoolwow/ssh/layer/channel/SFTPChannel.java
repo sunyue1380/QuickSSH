@@ -38,14 +38,14 @@ public class SFTPChannel extends AbstractChannel {
         sos.writeInt(5);
         sos.writeByte(FXPCode.SSH_FXP_INIT.value);
         sos.writeInt(3);
-        logger.debug("[发送SFTP协议客户端版本号]{}", 3);
+        logger.trace("[发送SFTP协议客户端版本号]{}", 3);
         writeChannelData(sos.toByteArray());
         byte[] data = readChannelData().value;
         if (data[4] != FXPCode.SSH_FXP_VERSION.value) {
             throw new SFTPException("SFTP协议初始化失败!预期类型值:" + FXPCode.SSH_FXP_VERSION.value + ",实际类型值:" + data[4]);
         }
         int version = SSHUtil.byteArray2Int(data, 5, 4);
-        logger.debug("[接收SFTP协议服务端版本号]{}", version);
+        logger.trace("[接收SFTP协议服务端版本号]{}", version);
     }
 
     /**

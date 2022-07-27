@@ -3,6 +3,7 @@ package cn.schoolwow.ssh.domain;
 import cn.schoolwow.ssh.domain.kex.SSHClientSupportAlgorithm;
 
 import java.nio.file.Path;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class QuickSSHConfig {
     /**主机IP地址*/
@@ -28,6 +29,12 @@ public class QuickSSHConfig {
 
     /**客户端支持算法*/
     public SSHClientSupportAlgorithm sshClientSupportAlgorithm;
+
+    /**本地端口转发线程池*/
+    public ThreadPoolExecutor localForwardChannelThreadPoolExecutor;
+
+    /**远程端口转发线程池*/
+    public ThreadPoolExecutor remoteForwardChannelThreadPoolExecutor;
 
     @Override
     public String toString() {
