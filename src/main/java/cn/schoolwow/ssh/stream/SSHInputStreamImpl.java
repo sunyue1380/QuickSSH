@@ -37,7 +37,10 @@ public class SSHInputStreamImpl implements SSHInputStream {
 
     @Override
     public int read(byte[] b) throws IOException {
-        int length = dis.read(b);
+        int length = 0;
+        while(length<b.length){
+            length += dis.read(b, length, b.length-length);
+        }
         if(length!=b.length){
             throw new IOException("读取字节数组失败！期望读取长度:" + b.length + ",实际读取长度:" + length);
         }
@@ -46,7 +49,10 @@ public class SSHInputStreamImpl implements SSHInputStream {
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
-        int length = dis.read(b, off , len);
+        int length = 0;
+        while(length<b.length){
+            length += dis.read(b, length + off, b.length - length - off);
+        }
         if(length!=len){
             throw new IOException("读取字节数组失败！期望读取长度:" + len + ",实际读取长度:" + length);
         }

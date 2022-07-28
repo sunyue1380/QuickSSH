@@ -36,7 +36,7 @@ public class LocalForwardChannel extends AbstractChannel {
     }
 
     @Override
-    public void closeChannel() throws IOException {
+    public void close() throws IOException {
         sshSession.quickSSHConfig.localForwardChannelThreadPoolExecutor.shutdownNow();
     }
 
@@ -115,7 +115,7 @@ public class LocalForwardChannel extends AbstractChannel {
                             e.printStackTrace();
                         } finally {
                             try {
-                                localForwardChannel.closeChannel();
+                                localForwardChannel.close();
                             } catch (IOException e) {
                                 e.printStackTrace();
                             }

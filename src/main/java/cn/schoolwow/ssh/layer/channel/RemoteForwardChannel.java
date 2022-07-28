@@ -46,7 +46,7 @@ public class RemoteForwardChannel extends AbstractChannel {
     }
 
     @Override
-    public void closeChannel() throws IOException {
+    public void close() throws IOException {
         for (Integer remoteForwardPort : remoteForwardPortList) {
             sos.reset();
             sos.writeByte(SSHMessageCode.SSH_MSG_GLOBAL_REQUEST.value);
@@ -165,7 +165,7 @@ public class RemoteForwardChannel extends AbstractChannel {
                                 e.printStackTrace();
                             } finally {
                                 try {
-                                    remoteForwardChannel.closeChannel();
+                                    remoteForwardChannel.close();
                                 } catch (IOException e) {
                                     e.printStackTrace();
                                 }

@@ -53,7 +53,7 @@ public class ExecChannel extends AbstractChannel {
         } else {
             SSHUtil.checkExitStatus(payload,extendDataBuilder.toString());
         }
-        closeChannel();
+        close();
         if (null == data) {
             return null;
         }

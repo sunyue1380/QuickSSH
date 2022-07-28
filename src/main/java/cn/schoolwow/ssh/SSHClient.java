@@ -15,9 +15,10 @@ import cn.schoolwow.ssh.util.SSHUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.IOException;
 
-public class SSHClient {
+public class SSHClient implements Closeable {
     private Logger logger = LoggerFactory.getLogger(SSHClient.class);
 
     private SSHSession sshSession;
@@ -85,10 +86,8 @@ public class SSHClient {
         }
     }
 
-    /**
-     * 断开连接
-     */
-    public void disconnect() throws IOException {
+    @Override
+    public void close() throws IOException {
         if (!isClosed()) {
             SSHOutputStream sos = new SSHOutputStreamImpl();
             sos.writeByte(SSHMessageCode.SSH_MSG_DISCONNECT.value);

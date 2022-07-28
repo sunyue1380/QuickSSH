@@ -52,7 +52,7 @@ public class QuickSSHTest {
                 .build();
         Assert.assertEquals("/root", sshClient.exec("pwd"));
         Assert.assertEquals("root", sshClient.exec("echo $USER"));
-        sshClient.disconnect();
+        sshClient.close();
     }
 
     @Test
@@ -101,9 +101,9 @@ public class QuickSSHTest {
         String symbolicPath = sftpChannel.readSymbolicLinkPath(directory + "/dd");
         Assert.assertEquals(directory + "/cc", symbolicPath);
 
-        sftpChannel.closeChannel();
+        sftpChannel.close();
         sshClient.exec("rm -R " + directory);
-        sshClient.disconnect();
+        sshClient.close();
     }
 
     @Test
@@ -135,7 +135,7 @@ public class QuickSSHTest {
         }
         scanner.close();
         logger.info("[接收响应数据]\n{}", builder.toString());
-        localForwardChannel.closeChannel();
+        localForwardChannel.close();
     }
 
     @Test
@@ -155,6 +155,6 @@ public class QuickSSHTest {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        remoteForwardChannel.closeChannel();
+        remoteForwardChannel.close();
     }
 }

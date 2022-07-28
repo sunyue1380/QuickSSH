@@ -12,7 +12,13 @@ import cn.schoolwow.ssh.util.SSHUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -94,25 +100,61 @@ public class SFTPChannel extends AbstractChannel {
      * @param path 文件路径
      */
     public byte[] readFile(String path) throws IOException {
-        sos.reset();
-        sos.writeSSHString(new SSHString(path));
-        sos.writeInt(FXFCode.SSH_FXF_READ.value);
-        sos.writeInt(0);
-        writeFXP(FXPCode.SSH_FXP_OPEN);
-        SSHString handle = handleSSH_FXP_HANDLE();
-        try {
+        SSHString handle = getSFTPFileHandler(path);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();){
             sos.reset();
             sos.writeSSHString(handle);
             writeFXP(FXPCode.SSH_FXP_FSTAT);
             SFTPFileAttribute sftpFileAttribute = handleSSH_FXP_ATTRS();
+            //受限于频道的最大窗口大小限制,可能需要分多次传输
+            int readFileSize = 0;
+            while(readFileSize<sftpFileAttribute.size){
+                sos.reset();
+                sos.writeSSHString(handle);
+                sos.writeLong(readFileSize);
+                sos.writeInt((int) sftpFileAttribute.size);
+                writeFXP(FXPCode.SSH_FXP_READ);
+                SSHString data = handleSSH_FXP_DATA();
+                baos.write(data.value);
+                readFileSize += data.value.length;
+            }
+            return baos.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            closeHandle(handle);
+        }
+    }
+
+    /**
+     * 读取远程文件保存到本地
+     * @param remoteFilePath 远程文件路径
+     * @param localFilePath 本地文件
+     */
+    public void readFile(String remoteFilePath, String localFilePath) throws IOException {
+        Path localFilePathPath = Paths.get(localFilePath);
+        Files.createDirectories(localFilePathPath.getParent());
+
+        SSHString handle = getSFTPFileHandler(remoteFilePath);
+        try (FileOutputStream fos = new FileOutputStream(localFilePathPath.toFile());){
             sos.reset();
             sos.writeSSHString(handle);
-            sos.writeLong(0);
-            sos.writeInt((int) sftpFileAttribute.size);
-            writeFXP(FXPCode.SSH_FXP_READ);
-            SSHString data = handleSSH_FXP_DATA();
-            return data.value;
-        } catch (IOException e) {
+            writeFXP(FXPCode.SSH_FXP_FSTAT);
+            SFTPFileAttribute sftpFileAttribute = handleSSH_FXP_ATTRS();
+            int readFileSize = 0;
+            while(readFileSize<sftpFileAttribute.size){
+                sos.reset();
+                sos.writeSSHString(handle);
+                sos.writeLong(readFileSize);
+                sos.writeInt((int) sftpFileAttribute.size);
+                writeFXP(FXPCode.SSH_FXP_READ);
+                SSHString data = handleSSH_FXP_DATA();
+                fos.write(data.value);
+                readFileSize += data.value.length;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
             throw e;
         } finally {
             closeHandle(handle);
@@ -127,21 +169,22 @@ public class SFTPChannel extends AbstractChannel {
      * @param len    读取长度
      */
     public byte[] readFile(String path, long offset, int len) throws IOException {
-        sos.reset();
-        sos.writeSSHString(new SSHString(path));
-        sos.writeInt(FXFCode.SSH_FXF_READ.value);
-        sos.writeInt(0);
-        writeFXP(FXPCode.SSH_FXP_OPEN);
-        SSHString handle = handleSSH_FXP_HANDLE();
-        try {
-            sos.reset();
-            sos.writeSSHString(handle);
-            sos.writeLong(offset);
-            sos.writeInt(len);
-            writeFXP(FXPCode.SSH_FXP_READ);
-            SSHString data = handleSSH_FXP_DATA();
-            return data.value;
+        SSHString handle = getSFTPFileHandler(path);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();){
+            int readFileSize = 0;
+            while(readFileSize<len){
+                sos.reset();
+                sos.writeSSHString(handle);
+                sos.writeLong(readFileSize+offset);
+                sos.writeInt(len);
+                writeFXP(FXPCode.SSH_FXP_READ);
+                SSHString data = handleSSH_FXP_DATA();
+                baos.write(data.value);
+                readFileSize += data.value.length;
+            }
+            return baos.toByteArray();
         } catch (IOException e) {
+            e.printStackTrace();
             throw e;
         } finally {
             closeHandle(handle);
@@ -350,10 +393,24 @@ public class SFTPChannel extends AbstractChannel {
     }
 
     /**
+     * 获取文件句柄
+     * */
+    private SSHString getSFTPFileHandler(String path) throws IOException {
+        sos.reset();
+        sos.writeSSHString(new SSHString(path));
+        sos.writeInt(FXFCode.SSH_FXF_READ.value);
+        sos.writeInt(0);
+        writeFXP(FXPCode.SSH_FXP_OPEN);
+        SSHString handle = handleSSH_FXP_HANDLE();
+        return handle;
+    }
+
+    /**
      * 处理SSH_FXP_HANDLE响应
      */
     private SSHString handleSSH_FXP_HANDLE() throws IOException {
-        SSHInputStream sis = readFXP(FXPCode.SSH_FXP_HANDLE);
+        byte[] payload = readFXP(FXPCode.SSH_FXP_HANDLE);
+        SSHInputStream sis = new SSHInputStreamImpl(payload);
         return sis.readSSHString();
     }
 
@@ -361,15 +418,26 @@ public class SFTPChannel extends AbstractChannel {
      * 处理SSH_FXP_HANDLE响应
      */
     private SSHString handleSSH_FXP_DATA() throws IOException {
-        SSHInputStream sis = readFXP(FXPCode.SSH_FXP_DATA);
-        return sis.readSSHString();
+        byte[] payload = readFXP(FXPCode.SSH_FXP_DATA);
+        //频道数据有可能分成多次发送
+        int length = SSHUtil.byteArray2Int(payload,0,4);
+        byte[] data = new byte[length];
+        System.arraycopy(payload,4, data, 0, payload.length-4);
+        int readFileSize = payload.length-4;
+        while(readFileSize!=length){
+            payload = readChannelData().value;
+            System.arraycopy(payload,0, data, readFileSize, payload.length);
+            readFileSize += payload.length;
+        }
+        return new SSHString(data);
     }
 
     /**
      * 处理handleSSH_FXP_NAME响应
      */
     private List<SFTPFile> handleSSH_FXP_NAME() throws IOException {
-        SSHInputStream sis = readFXP(FXPCode.SSH_FXP_NAME);
+        byte[]  payload = readFXP(FXPCode.SSH_FXP_NAME);
+        SSHInputStream sis = new SSHInputStreamImpl(payload);
         int count = sis.readInt();
         List<SFTPFile> sftpFileList = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -390,7 +458,8 @@ public class SFTPChannel extends AbstractChannel {
      * 处理handleSSH_FXP_ATTRS响应
      */
     private SFTPFileAttribute handleSSH_FXP_ATTRS() throws IOException {
-        SSHInputStream sis = readFXP(FXPCode.SSH_FXP_ATTRS);
+        byte[] payload = readFXP(FXPCode.SSH_FXP_ATTRS);
+        SSHInputStream sis = new SSHInputStreamImpl(payload);
         return getSFTPFileAttribute(sis);
     }
 
@@ -437,7 +506,7 @@ public class SFTPChannel extends AbstractChannel {
     /**
      * 发送FXP消息
      */
-    private SSHInputStream readFXP(FXPCode expectFXPType) throws IOException {
+    private byte[] readFXP(FXPCode expectFXPType) throws IOException {
         byte[] data = readChannelData().value;
         FXPCode fxpCode = FXPCode.getFXPCode(data[4]);
         int fxpId = SSHUtil.byteArray2Int(data, 5, 4);
@@ -449,17 +518,21 @@ public class SFTPChannel extends AbstractChannel {
             fxpId = SSHUtil.byteArray2Int(data, 5, 4);
             logger.trace("[接收FXP消息]id:{}, 类型:{}", fxpId, fxpCode);
         }
-        SSHInputStream sis = new SSHInputStreamImpl(data);
-        sis.skipBytes(9);
+
         if (FXPCode.SSH_FXP_STATUS.equals(fxpCode)) {
-            int errorCode = sis.readInt();
+            int errorCode = SSHUtil.byteArray2Int(data,9,4);
             if (errorCode == 0) {
-                return sis;
+                byte[] payload = new byte[data.length-13];
+                System.arraycopy(data, 13, payload, 0, payload.length);
+                return payload;
             }
-            String description = sis.readSSHString().toString();
+            String description = new String(data,17,data.length, StandardCharsets.UTF_8);
             throw new SFTPException(errorCode, description);
+        }else{
+            byte[] payload = new byte[data.length-9];
+            System.arraycopy(data, 9, payload, 0, payload.length);
+            return payload;
         }
-        return sis;
     }
 
     /**

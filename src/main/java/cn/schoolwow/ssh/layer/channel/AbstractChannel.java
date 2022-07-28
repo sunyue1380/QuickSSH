@@ -13,9 +13,10 @@ import cn.schoolwow.ssh.util.SSHUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.IOException;
 
-public class AbstractChannel {
+public class AbstractChannel implements Closeable {
     private Logger logger = LoggerFactory.getLogger(AbstractChannel.class);
 
     /**
@@ -32,6 +33,16 @@ public class AbstractChannel {
      * 服务端频道编号
      */
     protected int recipientChannel;
+
+    /**
+     * 最大包大小(32kb)
+     * */
+    protected int maximumPacketSize = 32*1024;
+
+    /**
+     * 初始窗口大小
+     * */
+    protected int initialWindowSize = 64*maximumPacketSize;
 
     /**
      * 输出报文缓存
@@ -61,24 +72,6 @@ public class AbstractChannel {
     }
 
     /**
-     * 关闭频道
-     */
-    public void closeChannel() throws IOException {
-        if (!channelClosed) {
-            SSHOutputStream sos = new SSHOutputStreamImpl();
-            sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_CLOSE.value);
-            sos.writeInt(recipientChannel);
-            sshSession.writeSSHProtocolPayload(sos.toByteArray());
-
-            byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_CLOSE);
-            logger.debug("[关闭频道]本地频道id:{},对端频道id:{}", senderChannel, recipientChannel);
-            channelClosed = true;
-        } else {
-            logger.debug("[关闭频道]该频道已经关闭!");
-        }
-    }
-
-    /**
      * 获取关联SSH客户端
      */
     public SSHClient getSSHClient() {
@@ -94,8 +87,8 @@ public class AbstractChannel {
         sos.writeSSHString(new SSHString("session"));
         int senderChannel = sshSession.senderChannel++;
         sos.writeInt(senderChannel);
-        sos.writeInt(0x100000);
-        sos.writeInt(0x4000);
+        sos.writeInt(initialWindowSize);
+        sos.writeInt(maximumPacketSize);
         sshSession.writeSSHProtocolPayload(sos.toByteArray());
         checkChannelOpen(senderChannel);
         logger.debug("[打开频道成功]本地频道id:{},对端频道id:{}", senderChannel, recipientChannel);
@@ -204,15 +197,34 @@ public class AbstractChannel {
      * 检查操作是否成功
      */
     protected void checkChannelRequestWantReply() throws IOException {
-        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
+//        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST);
+//        int bytesToAdd = SSHUtil.byteArray2Int(payload,5,4);
+//        initialWindowSize = initialWindowSize + bytesToAdd;
+
+        byte[] payload = sshSession.readChannelPayload(senderChannel,  SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
         SSHMessageCode sshMessageCode = SSHMessageCode.getSSHMessageCode(payload[0]);
         switch (sshMessageCode) {
-            case SSH_MSG_CHANNEL_SUCCESS: {
-            }
+            case SSH_MSG_CHANNEL_SUCCESS: {}
             break;
             case SSH_MSG_CHANNEL_FAILURE: {
                 throw new SSHException("SSH频道请求操作失败!本地频道id:" + senderChannel + ",对端频道id:" + recipientChannel);
             }
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (!channelClosed) {
+            SSHOutputStream sos = new SSHOutputStreamImpl();
+            sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_CLOSE.value);
+            sos.writeInt(recipientChannel);
+            sshSession.writeSSHProtocolPayload(sos.toByteArray());
+
+            byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_CLOSE);
+            logger.debug("[关闭频道]本地频道id:{},对端频道id:{}", senderChannel, recipientChannel);
+            channelClosed = true;
+        } else {
+            logger.debug("[关闭频道]该频道已经关闭!");
         }
     }
 }
