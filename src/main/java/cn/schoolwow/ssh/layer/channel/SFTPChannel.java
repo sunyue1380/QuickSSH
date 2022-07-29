@@ -106,6 +106,7 @@ public class SFTPChannel extends AbstractChannel {
             sos.writeSSHString(handle);
             writeFXP(FXPCode.SSH_FXP_FSTAT);
             SFTPFileAttribute sftpFileAttribute = handleSSH_FXP_ATTRS();
+            adjustWindowSize((int) sftpFileAttribute.size);
             //受限于频道的最大窗口大小限制,可能需要分多次传输
             int readFileSize = 0;
             while(readFileSize<sftpFileAttribute.size){
@@ -142,6 +143,7 @@ public class SFTPChannel extends AbstractChannel {
             sos.writeSSHString(handle);
             writeFXP(FXPCode.SSH_FXP_FSTAT);
             SFTPFileAttribute sftpFileAttribute = handleSSH_FXP_ATTRS();
+            adjustWindowSize((int) sftpFileAttribute.size);
             int readFileSize = 0;
             while(readFileSize<sftpFileAttribute.size){
                 sos.reset();
@@ -171,6 +173,7 @@ public class SFTPChannel extends AbstractChannel {
     public byte[] readFile(String path, long offset, int len) throws IOException {
         SSHString handle = getSFTPFileHandler(path);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();){
+            adjustWindowSize(len);
             int readFileSize = 0;
             while(readFileSize<len){
                 sos.reset();

@@ -197,11 +197,11 @@ public class AbstractChannel implements Closeable {
      * 检查操作是否成功
      */
     protected void checkChannelRequestWantReply() throws IOException {
-//        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST);
-//        int bytesToAdd = SSHUtil.byteArray2Int(payload,5,4);
-//        initialWindowSize = initialWindowSize + bytesToAdd;
+        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST);
+        int bytesToAdd = SSHUtil.byteArray2Int(payload,5,4);
+        initialWindowSize = initialWindowSize + bytesToAdd;
 
-        byte[] payload = sshSession.readChannelPayload(senderChannel,  SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
+        payload = sshSession.readChannelPayload(senderChannel,  SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
         SSHMessageCode sshMessageCode = SSHMessageCode.getSSHMessageCode(payload[0]);
         switch (sshMessageCode) {
             case SSH_MSG_CHANNEL_SUCCESS: {}
@@ -210,6 +210,18 @@ public class AbstractChannel implements Closeable {
                 throw new SSHException("SSH频道请求操作失败!本地频道id:" + senderChannel + ",对端频道id:" + recipientChannel);
             }
         }
+    }
+
+    /**
+     * 调整窗口大小
+     * @param bytesToAdd 要增加的字节数
+     */
+    protected void adjustWindowSize(int bytesToAdd) throws IOException {
+        sos.reset();
+        sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST.value);
+        sos.writeInt(recipientChannel);
+        sos.writeInt(bytesToAdd);
+        sshSession.writeSSHProtocolPayload(sos.toByteArray());
     }
 
     @Override

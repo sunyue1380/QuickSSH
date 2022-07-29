@@ -5,7 +5,7 @@
     <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
         <Target>System.out</Target>
         <encoder>
-            <pattern>%highlight(%-5level) %d{HH:mm:ss.SSS} %c{10}:%L [%X{requestId}] %m %n</pattern>
+            <pattern>%highlight(%-5level) %d{HH:mm:ss.SSS} %c{10}:%L %m %n</pattern>
         </encoder>
     </appender>
 
@@ -13,7 +13,7 @@
         <append>true</append>
         <immediateFlush>true</immediateFlush>
         <encoder>
-            <pattern>%-5level %d{HH:mm:ss.SSS} %c{10}:%L [%X{requestId}] %m %n</pattern>
+            <pattern>%-5level %d{HH:mm:ss.SSS} %c{10}:%L %m %n</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -30,7 +30,7 @@
         <append>true</append>
         <immediateFlush>true</immediateFlush>
         <encoder>
-            <pattern>%-5level %d{HH:mm:ss.SSS} %c{10}:%L [%X{requestId}] %m %n</pattern>
+            <pattern>%-5level %d{HH:mm:ss.SSS} %c{10}:%L %m %n</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
