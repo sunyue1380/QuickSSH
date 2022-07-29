@@ -15,7 +15,7 @@ public class SFTPException extends RuntimeException {
     }
 
     public SFTPException(int errorCode, String description) {
-        super("SFTP协议异常!错误编码:"+errorCode+",错误描述:"+description);
+        this("SFTP协议异常!错误编码:"+errorCode+",错误描述:"+description);
         this.errorCode = errorCode;
         this.description = description;
         switch (errorCode){

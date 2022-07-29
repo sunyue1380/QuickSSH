@@ -97,13 +97,15 @@ public class AbstractChannel implements Closeable {
         sos.reset();
         sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_OPEN.value);
         sos.writeSSHString(new SSHString("session"));
-        int senderChannel = sshSession.senderChannel++;
+        senderChannel = sshSession.senderChannel.getAndIncrement();
         sos.writeInt(senderChannel);
         sos.writeInt(initialWindowSize);
         sos.writeInt(maximumPacketSize);
         sshSession.writeSSHProtocolPayload(sos.toByteArray());
-        checkChannelOpen(senderChannel);
-        logger.debug("[打开频道成功]本地频道id:{},对端频道id:{}", senderChannel, recipientChannel);
+        synchronized (sshSession){
+            checkChannelOpen(senderChannel);
+            logger.debug("[打开频道成功]本地频道id:{},对端频道id:{}", senderChannel, recipientChannel);
+        }
     }
 
     /**
@@ -160,31 +162,31 @@ public class AbstractChannel implements Closeable {
             case SSH_MSG_CHANNEL_OPEN_FAILURE: {
                 sis.skipBytes(4);
                 int reasonCode = sis.readInt();
-                String description = sis.readSSHString().toString();
-                if (null == description || description.isEmpty()) {
-                    switch (reasonCode) {
-                        case 1: {
-                            description = "SSH_OPEN_ADMINISTRATIVELY_PROHIBITED";
-                        }
-                        break;
-                        case 2: {
-                            description = "SSH_OPEN_CONNECT_FAILED";
-                        }
-                        break;
-                        case 3: {
-                            description = "SSH_OPEN_UNKNOWN_CHANNEL_TYPE";
-                        }
-                        break;
-                        case 4: {
-                            description = "SSH_OPEN_RESOURCE_SHORTAGE";
-                        }
-                        break;
-                        default: {
-                            throw new SSHException("无法识别的创建频道错误编码!编码:" + reasonCode);
-                        }
+
+                String reasonCodeDescription = null;
+                switch (reasonCode) {
+                    case 1: {
+                        reasonCodeDescription = "SSH_OPEN_ADMINISTRATIVELY_PROHIBITED";
+                    }
+                    break;
+                    case 2: {
+                        reasonCodeDescription = "SSH_OPEN_CONNECT_FAILED";
+                    }
+                    break;
+                    case 3: {
+                        reasonCodeDescription = "SSH_OPEN_UNKNOWN_CHANNEL_TYPE";
+                    }
+                    break;
+                    case 4: {
+                        reasonCodeDescription = "SSH_OPEN_RESOURCE_SHORTAGE";
+                    }
+                    break;
+                    default: {
+                        throw new SSHException("无法识别的创建频道错误编码!编码:" + reasonCode);
                     }
                 }
-                throw new SSHException("打开频道失败!本地频道id:" + recipientChannel + ",对端频道编号:" + this.recipientChannel + ",错误编号:" + reasonCode + ",错误描述:" + description);
+                String description = sis.readSSHString().toString();
+                throw new SSHException("打开频道失败!本地频道id:" + recipientChannel + ",对端频道编号:" + this.recipientChannel + ",错误编号:" + reasonCodeDescription + ",错误描述:" + description);
             }
         }
     }
@@ -209,15 +211,16 @@ public class AbstractChannel implements Closeable {
      * 检查操作是否成功
      */
     protected void checkChannelRequestWantReply() throws IOException {
-        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST);
-        int bytesToAdd = SSHUtil.byteArray2Int(payload,5,4);
-        initialWindowSize = initialWindowSize + bytesToAdd;
-
-        payload = sshSession.readChannelPayload(senderChannel,  SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
+        byte[] payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST, SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
         SSHMessageCode sshMessageCode = SSHMessageCode.getSSHMessageCode(payload[0]);
+        if(SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST.equals(sshMessageCode)){
+            int bytesToAdd = SSHUtil.byteArray2Int(payload,5,4);
+            initialWindowSize = initialWindowSize + bytesToAdd;
+            payload = sshSession.readChannelPayload(senderChannel, SSHMessageCode.SSH_MSG_CHANNEL_SUCCESS, SSHMessageCode.SSH_MSG_CHANNEL_FAILURE);
+            sshMessageCode = SSHMessageCode.getSSHMessageCode(payload[0]);
+        }
         switch (sshMessageCode) {
-            case SSH_MSG_CHANNEL_SUCCESS: {}
-            break;
+            case SSH_MSG_CHANNEL_SUCCESS: {}break;
             case SSH_MSG_CHANNEL_FAILURE: {
                 throw new SSHException("SSH频道请求操作失败!本地频道id:" + senderChannel + ",对端频道id:" + recipientChannel);
             }

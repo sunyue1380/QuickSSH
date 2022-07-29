@@ -15,13 +15,16 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * SFTP频道
+ * <p>SFTP不支持多线程调用,一个频道只能由一个线程使用</p>
+ * */
 public class SFTPChannel extends AbstractChannel {
     private Logger logger = LoggerFactory.getLogger(SFTPChannel.class);
 
@@ -143,6 +146,7 @@ public class SFTPChannel extends AbstractChannel {
             sos.writeSSHString(handle);
             writeFXP(FXPCode.SSH_FXP_FSTAT);
             SFTPFileAttribute sftpFileAttribute = handleSSH_FXP_ATTRS();
+            logger.info("[传输文件]远程路径:{},本地路径:{},文件大小:{}", remoteFilePath, localFilePath, sftpFileAttribute.size);
             adjustWindowSize((int) sftpFileAttribute.size);
             int readFileSize = 0;
             while(readFileSize<sftpFileAttribute.size){
@@ -155,6 +159,7 @@ public class SFTPChannel extends AbstractChannel {
                 fos.write(data.value);
                 readFileSize += data.value.length;
             }
+            logger.info("[文件传输完成]远程路径:{},本地路径:{},文件大小:{}", remoteFilePath, localFilePath, sftpFileAttribute.size);
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
@@ -525,13 +530,15 @@ public class SFTPChannel extends AbstractChannel {
         }
 
         if (FXPCode.SSH_FXP_STATUS.equals(fxpCode)) {
-            int errorCode = SSHUtil.byteArray2Int(data,9,4);
+            SSHInputStream sis = new SSHInputStreamImpl(data);
+            sis.skipBytes(9);
+            int errorCode = sis.readInt();
             if (errorCode == 0) {
                 byte[] payload = new byte[data.length-13];
                 System.arraycopy(data, 13, payload, 0, payload.length);
                 return payload;
             }
-            String description = new String(data,17,data.length, StandardCharsets.UTF_8);
+            String description = sis.readSSHString().toString();
             throw new SFTPException(errorCode, description);
         }else{
             byte[] payload = new byte[data.length-9];

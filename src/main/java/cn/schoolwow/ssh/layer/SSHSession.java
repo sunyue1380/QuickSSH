@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -51,7 +52,7 @@ public class SSHSession {
     /**
      * 发送频道id计数
      */
-    public volatile int senderChannel = 1000;
+    public volatile AtomicInteger senderChannel = new AtomicInteger(1000);
 
     /**
      * 接收频道id计数
@@ -102,11 +103,25 @@ public class SSHSession {
             if(null!=payload){
                 return payload;
             }
-            payload = readSSHProtocolPayload(sshMessageCodes);
-            if(SSHUtil.byteArray2Int(payload,1,4)==recipientChannel){
-                return payload;
+            if(readSSHProtocolPayloadLock.tryLock()){
+                try {
+                    payload = doReadSSHProtocolPayload();
+                    for (SSHMessageCode sshMessageCode : sshMessageCodes) {
+                        if (sshMessageCode.value == payload[0]&&SSHUtil.byteArray2Int(payload,1,4)==recipientChannel) {
+                            return payload;
+                        }
+                    }
+                    handleSSHMessage(payload);
+                }finally {
+                    readSSHProtocolPayloadLock.unlock();
+                }
+            }else{
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
-            handleSSHMessage(payload);
         }
     }
 
@@ -204,7 +219,7 @@ public class SSHSession {
         } else {
             clientSequenceNumber++;
         }
-        logger.debug("[写入协议包]类型:{},大小:{}", SSHMessageCode.getSSHMessageCode(payload[0]), payload.length);
+        logger.trace("[写入协议包]类型:{},大小:{}", SSHMessageCode.getSSHMessageCode(payload[0]), payload.length);
     }
 
     /**
@@ -265,7 +280,7 @@ public class SSHSession {
                 SSHUtil.checkExitStatus(payload,null);
             }break;
             default:{
-                logger.debug("[添加SSH协议包到缓存队列]{}", SSHMessageCode.getSSHMessageCode(payload[0]));
+                logger.trace("[添加SSH协议包到缓存队列]{}", SSHMessageCode.getSSHMessageCode(payload[0]));
                 sshProtocolPayloadCache.add(payload);
             }
         }
@@ -345,7 +360,7 @@ public class SSHSession {
         } else {
             serverSequenceNumber++;
         }
-        logger.debug("[读取协议包]类型:{},大小:{}", SSHMessageCode.getSSHMessageCode(payload[0]), payload.length);
+        logger.trace("[读取协议包]类型:{},大小:{}", SSHMessageCode.getSSHMessageCode(payload[0]), payload.length);
         return payload;
     }
 

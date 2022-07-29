@@ -51,7 +51,7 @@ public class LocalForwardChannel extends AbstractChannel {
         sos.reset();
         sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_OPEN.value);
         sos.writeSSHString(new SSHString("direct-tcpip"));
-        int senderChannel = sshSession.senderChannel++;
+        int senderChannel = sshSession.senderChannel.getAndIncrement();
         sos.writeInt(senderChannel);
         sos.writeInt(0x100000);
         sos.writeInt(0x100000);

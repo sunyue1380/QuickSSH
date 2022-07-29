@@ -15,9 +15,15 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class QuickSSHTest {
     private static Logger logger = LoggerFactory.getLogger(QuickSSHTest.class);
@@ -118,7 +124,6 @@ public class QuickSSHTest {
         String directory = "/opt/sftp";
         try (SFTPChannel sftpChannel = sshClient.sftpChannel();){
             sshClient.exec("rm -R " + directory + "; mkdir -p " + directory + "/");
-            //创建大文件
             byte[] data = new byte[102400];
             Random random = new Random();
             random.nextBytes(data);
@@ -129,6 +134,68 @@ public class QuickSSHTest {
             Assert.assertArrayEquals(data,readData);
         }finally {
             sshClient.exec("rm -R " + directory);
+            sshClient.close();
+        }
+    }
+
+    @Test
+    public void sftpChannelMultiThread() throws IOException {
+        SSHClient sshClient = QuickSSH.newInstance()
+                .host(account.host())
+                .port(account.port())
+                .username(account.username())
+                .password(account.password())
+                .build();
+        try (SFTPChannel sftpChannel = sshClient.sftpChannel();){
+            Path localDirectoryPath = Files.createTempDirectory("sftpMultiThread-");
+            String remoteDiretory = "/usr/lib/";
+            List<SFTPFile> sftpFileList = sftpChannel.scanDirectory(remoteDiretory);
+
+            ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(Math.min(10-1,Runtime.getRuntime().availableProcessors()*2));
+            List<SFTPFile> transferSFTPFileList = new ArrayList<>();
+            for(SFTPFile sftpFile:sftpFileList){
+                if(sftpFile.isDirectory()||sftpFile.isSymbolicLink()){
+                    continue;
+                }
+                if(sftpFile.attribute.size>0&&sftpFile.attribute.size<=2*1024*1024){
+                    transferSFTPFileList.add(sftpFile);
+                    threadPoolExecutor.execute(()->{
+                        try (SFTPChannel transferSFTPChannel = sshClient.sftpChannel();){
+                            transferSFTPChannel.readFile(remoteDiretory+sftpFile.fileName,localDirectoryPath.resolve(sftpFile.fileName).toString());
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
+                }
+            }
+            logger.info("[总传输任务个数]{}", transferSFTPFileList.size());
+            threadPoolExecutor.shutdown();
+            try {
+                threadPoolExecutor.awaitTermination(1, TimeUnit.HOURS);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            sftpChannel.close();
+            for(SFTPFile sftpFile:transferSFTPFileList){
+                logger.info("[检查文件]{}", sftpFile.fileName);
+                Path path = localDirectoryPath.resolve(sftpFile.fileName);
+                Assert.assertTrue(Files.exists(path));
+                Assert.assertEquals(sftpFile.attribute.size, Files.size(path));
+            }
+            Files.walkFileTree(localDirectoryPath, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    Files.deleteIfExists(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    Files.deleteIfExists(dir);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }finally {
             sshClient.close();
         }
     }
