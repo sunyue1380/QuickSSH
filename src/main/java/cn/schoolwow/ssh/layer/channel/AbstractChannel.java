@@ -65,6 +65,18 @@ public class AbstractChannel implements Closeable {
     }
 
     /**
+     * 调整窗口大小
+     * @param bytesToAdd 要增加的字节数
+     */
+    public void adjustWindowSize(int bytesToAdd) throws IOException {
+        sos.reset();
+        sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST.value);
+        sos.writeInt(recipientChannel);
+        sos.writeInt(bytesToAdd);
+        sshSession.writeSSHProtocolPayload(sos.toByteArray());
+    }
+
+    /**
      * 频道是否关闭
      */
     public boolean isChannelClosed() {
@@ -210,18 +222,6 @@ public class AbstractChannel implements Closeable {
                 throw new SSHException("SSH频道请求操作失败!本地频道id:" + senderChannel + ",对端频道id:" + recipientChannel);
             }
         }
-    }
-
-    /**
-     * 调整窗口大小
-     * @param bytesToAdd 要增加的字节数
-     */
-    protected void adjustWindowSize(int bytesToAdd) throws IOException {
-        sos.reset();
-        sos.writeByte(SSHMessageCode.SSH_MSG_CHANNEL_WINDOW_ADJUST.value);
-        sos.writeInt(recipientChannel);
-        sos.writeInt(bytesToAdd);
-        sshSession.writeSSHProtocolPayload(sos.toByteArray());
     }
 
     @Override

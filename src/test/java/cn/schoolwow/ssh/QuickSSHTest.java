@@ -16,6 +16,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 
 public class QuickSSHTest {
@@ -104,6 +105,32 @@ public class QuickSSHTest {
         sftpChannel.close();
         sshClient.exec("rm -R " + directory);
         sshClient.close();
+    }
+
+    @Test
+    public void sftpChannelLarFile() throws IOException {
+        SSHClient sshClient = QuickSSH.newInstance()
+                .host(account.host())
+                .port(account.port())
+                .username(account.username())
+                .password(account.password())
+                .build();
+        String directory = "/opt/sftp";
+        try (SFTPChannel sftpChannel = sshClient.sftpChannel();){
+            sshClient.exec("rm -R " + directory + "; mkdir -p " + directory + "/");
+            //创建大文件
+            byte[] data = new byte[102400];
+            Random random = new Random();
+            random.nextBytes(data);
+            String path = "/opt/sftp/bigFile.txt";
+            sftpChannel.writeFile(path, data);
+            byte[] readData = sftpChannel.readFile(path);
+            Assert.assertEquals(data.length,readData.length);
+            Assert.assertArrayEquals(data,readData);
+        }finally {
+            sshClient.exec("rm -R " + directory);
+            sshClient.close();
+        }
     }
 
     @Test

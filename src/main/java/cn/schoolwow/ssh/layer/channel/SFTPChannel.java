@@ -214,6 +214,7 @@ public class SFTPChannel extends AbstractChannel {
      * @return 返回状态码
      */
     public void writeFile(String path, long offset, byte[] data) throws IOException {
+        adjustWindowSize(data.length);
         sos.reset();
         sos.writeSSHString(new SSHString(path));
         sos.writeInt(FXFCode.SSH_FXF_CREAT.value | FXFCode.SSH_FXF_WRITE.value);
@@ -243,6 +244,7 @@ public class SFTPChannel extends AbstractChannel {
      * @return 返回状态码
      */
     public void appendFile(String path, byte[] data) throws IOException {
+        adjustWindowSize(data.length);
         sos.reset();
         sos.writeSSHString(new SSHString(path));
         sos.writeInt(FXFCode.SSH_FXF_WRITE.value | FXFCode.SSH_FXF_CREAT.value);
