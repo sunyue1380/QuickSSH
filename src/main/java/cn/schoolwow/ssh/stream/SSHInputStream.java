@@ -32,30 +32,30 @@ public interface SSHInputStream extends DataInput {
     /**
      * 读取一个字节
      * */
-    public int[] readBitByte() throws IOException;
+    int[] readBitByte() throws IOException;
 
     /**
      * 读取指定个数字节
      * */
-    public int[] readBitBytes(int byteLength) throws IOException;
+    int[] readBitBytes(int byteLength) throws IOException;
 
     /**
      * 读取MPInt类型
      * */
-    public BigInteger readMPInt() throws IOException;
+    BigInteger readMPInt() throws IOException;
 
     /**
      * 读取字符串类型
      * */
-    public SSHString readSSHString() throws IOException;
+    SSHString readSSHString() throws IOException;
 
     /**
      * 读取名称列表类型
      * */
-    public List<String> readNameList() throws IOException;
+    List<String> readNameList() throws IOException;
 
     /**
      * 读取DER格式
      * */
-    public DistinguishedEncodingRule readDER() throws IOException;
+    DistinguishedEncodingRule readDER() throws IOException;
 }

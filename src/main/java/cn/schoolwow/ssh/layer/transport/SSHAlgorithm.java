@@ -9,7 +9,6 @@ public interface SSHAlgorithm {
 
     /**
      * 支持算法名称列表
-     * @param algorithmName 算法名称
      * */
     String[] algorithmNameList();
 }

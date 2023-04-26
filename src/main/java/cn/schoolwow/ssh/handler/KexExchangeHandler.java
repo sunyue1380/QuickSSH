@@ -105,9 +105,11 @@ public class KexExchangeHandler implements Handler{
     /**
      * 计算密钥
      * @param keyLength 密钥长度
-     * @param kexResult 密钥交换结果
+     * @param K 共享秘钥K
+     * @param H 用于验证
+     * @param messageDigest 消息摘要
      * @param sessionId 会话id
-     * @param char x 指定字符
+     * @param x 指定字符
      * */
     private byte[] calculateKey(int keyLength, BigInteger K, byte[] H, MessageDigest messageDigest, byte[] sessionId, char x) throws Exception {
         SSHOutputStream sos = new SSHOutputStreamImpl();

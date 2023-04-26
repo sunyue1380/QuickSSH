@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+/**SSH会话信息*/
 public class SSHSession {
     private Logger logger = LoggerFactory.getLogger(SSHSession.class);
 
@@ -133,7 +134,7 @@ public class SSHSession {
      */
     public byte[] readSSHProtocolPayload(SSHMessageCode... sshMessageCodes) throws IOException {
         while (true) {
-            byte[] payload = findFromSSHPrototolPayloadCache(sshMessageCodes);
+            byte[] payload = findFromSSHProtocolPayloadCache(sshMessageCodes);
             if(null!=payload){
                 return payload;
             }
@@ -365,7 +366,7 @@ public class SSHSession {
     }
 
     /**从SSH协议包缓存数据中查找数据*/
-    private byte[] findFromSSHPrototolPayloadCache(SSHMessageCode... sshMessageCodes){
+    private byte[] findFromSSHProtocolPayloadCache(SSHMessageCode... sshMessageCodes){
         Iterator<byte[]> iterator = sshProtocolPayloadCache.iterator();
         while(iterator.hasNext()){
             byte[] payload = iterator.next();
